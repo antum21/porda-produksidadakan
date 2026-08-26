@@ -1,0 +1,6 @@
+{
+  "name": "Porda - Produksi Dadakan",
+  "description": "Aplikasi Web ERP Produksi Cetak Apparel (Sablon Manual, Digital, DTF), Manajemen Pesanan, dan Realtime Kanban Produksi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

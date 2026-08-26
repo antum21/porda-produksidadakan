@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@layer utilities {
+  /* Hide scrollbar for clean horizontal tab scrolling */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@media print {
+  /* Hide everything on page except the printable modal container */
+  body * {
+    visibility: hidden;
+  }
+
+  #printable-invoice,
+  #printable-invoice *,
+  #printable-spk,
+  #printable-spk * {
+    visibility: visible;
+  }
+
+  #printable-invoice,
+  #printable-spk {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+
+  /* Reset colors to high contrast for printing */
+  #printable-invoice h2,
+  #printable-spk h2 {
+    color: black !important;
+  }
+
+  #invoice-modal-backdrop,
+  #wo-detail-modal-backdrop {
+    background: transparent !important;
+    position: static !important;
+    padding: 0 !important;
+  }
+}
+
