@@ -1,12 +1,45 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { ProductionPage } from './pages/ProductionPage';
+import { AdminUsersPage } from './pages/AdminUsersPage';
 import { NewOrderModal } from './components/NewOrderModal';
+import { motion, AnimatePresence } from 'motion/react';
+
+// Animated Route Wrapper
+const AnimatedRoutes: React.FC<{ onOpenNewOrder: () => void }> = ({ onOpenNewOrder }) => {
+  const location = useLocation();
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -6 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        className="w-full"
+      >
+        <Routes location={location}>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route
+            path="/dashboard"
+            element={<DashboardPage onOpenNewOrder={onOpenNewOrder} />}
+          />
+          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/production" element={<ProductionPage />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
 
 // Route Guard Component
 const ProtectedApp: React.FC = () => {
@@ -25,7 +58,7 @@ const ProtectedApp: React.FC = () => {
     );
   }
 
-  // If not logged in, show login page or allow demo
+  // If not logged in, show login page
   if (!currentUser && !userProfile) {
     return <LoginPage />;
   }
@@ -33,16 +66,7 @@ const ProtectedApp: React.FC = () => {
   return (
     <>
       <Layout onOpenNewOrder={() => setIsGlobalNewOrderOpen(true)}>
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route
-            path="/dashboard"
-            element={<DashboardPage onOpenNewOrder={() => setIsGlobalNewOrderOpen(true)} />}
-          />
-          <Route path="/orders" element={<OrdersPage />} />
-          <Route path="/production" element={<ProductionPage />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+        <AnimatedRoutes onOpenNewOrder={() => setIsGlobalNewOrderOpen(true)} />
       </Layout>
 
       {/* Global New Order Modal triggered from bottom nav or pages */}
@@ -57,9 +81,13 @@ const ProtectedApp: React.FC = () => {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <ProtectedApp />
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <ProtectedApp />
+        </AuthProvider>
+      </ToastProvider>
     </BrowserRouter>
   );
 }
+
+

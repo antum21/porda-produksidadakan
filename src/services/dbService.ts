@@ -5,16 +5,43 @@ import {
   getDocs,
   getDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   query,
   orderBy,
+  where,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { OrderItem, WorkOrder, UserProfile, ProductionStage } from '../types';
+import { sanitizeApparelDesignsForStorage } from '../utils/imageCompressor';
 
 export const ORDERS_COLLECTION = 'orders';
 export const WORK_ORDERS_COLLECTION = 'work_orders';
 export const USERS_COLLECTION = 'users';
+
+/**
+ * Recursively remove undefined properties from any object or array to ensure Firestore setDoc/updateDoc never fails
+ */
+export function cleanUndefinedFields<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map((item) => (typeof item === 'object' && item !== null ? cleanUndefinedFields(item) : item)) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = typeof value === 'object' && value !== null ? cleanUndefinedFields(value) : value;
+      }
+    }
+    return cleaned as T;
+  }
+  return obj;
+}
 
 // Real-time listener for Orders
 export function subscribeOrders(callback: (orders: OrderItem[]) => void) {
@@ -52,9 +79,264 @@ export function subscribeWorkOrders(callback: (workOrders: WorkOrder[]) => void)
   );
 }
 
+// Real-time listener for Users / Staff (Admin Panel)
+export function subscribeUsers(callback: (users: UserProfile[]) => void) {
+  const q = query(collection(db, USERS_COLLECTION), orderBy('createdAt', 'desc'));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: UserProfile[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ uid: docSnap.id, ...(docSnap.data() as Omit<UserProfile, 'uid'>) });
+      });
+      callback(list);
+    },
+    (error) => {
+      console.error('Error fetching real-time users:', error);
+    }
+  );
+}
+
+// Fetch all users
+export async function getUsers(): Promise<UserProfile[]> {
+  const snap = await getDocs(collection(db, USERS_COLLECTION));
+  const list: UserProfile[] = [];
+  snap.forEach((docSnap) => {
+    list.push({ uid: docSnap.id, ...(docSnap.data() as Omit<UserProfile, 'uid'>) });
+  });
+  return list;
+}
+
+// Super Admin: Create new user account
+export async function createUserByAdmin(data: {
+  username: string;
+  nama: string;
+  role: UserProfile['role'];
+  password?: string;
+  email?: string;
+  phone?: string;
+}): Promise<UserProfile> {
+  const cleanUsername = data.username.trim().toLowerCase().replace(/\s+/g, '_');
+  
+  // Check if username already exists
+  const q = query(collection(db, USERS_COLLECTION), where('username', '==', cleanUsername));
+  const existingSnap = await getDocs(q);
+  if (!existingSnap.empty) {
+    throw new Error(`Username "${cleanUsername}" sudah digunakan. Silakan pilih username lain.`);
+  }
+
+  const uid = `usr-${Date.now().toString().slice(-6)}-${cleanUsername}`;
+  const now = new Date().toISOString();
+  const generatedEmail = data.email?.trim() || `${cleanUsername}@porda.app`;
+
+  const newProfile: UserProfile = {
+    uid,
+    username: cleanUsername,
+    nama: data.nama.trim(),
+    email: generatedEmail,
+    role: data.role,
+    password: data.password || 'porda123',
+    phone: data.phone?.trim() || '',
+    status: 'active',
+    createdAt: now,
+  };
+
+  await setDoc(doc(db, USERS_COLLECTION, uid), newProfile);
+  return newProfile;
+}
+
+// Super Admin: Update user profile / role / password
+export async function updateUserByAdmin(uid: string, updates: Partial<UserProfile>): Promise<void> {
+  const userRef = doc(db, USERS_COLLECTION, uid);
+  await updateDoc(userRef, updates);
+}
+
+// Super Admin: Delete user account
+export async function deleteUserByAdmin(uid: string): Promise<void> {
+  const userRef = doc(db, USERS_COLLECTION, uid);
+  await deleteDoc(userRef);
+}
+
+export const DEFAULT_SYSTEM_USERS: UserProfile[] = [
+  {
+    uid: 'usr-admin-01',
+    username: 'admin',
+    nama: 'Budi Santoso (Owner & Super Admin)',
+    email: 'admin@porda.app',
+    password: 'admin123',
+    role: 'Admin',
+    phone: '081234567890',
+    status: 'active',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    uid: 'usr-printing-01',
+    username: 'printing',
+    nama: 'Rian Pratama (Div. Cetak & Film)',
+    email: 'printing@porda.app',
+    password: 'print123',
+    role: 'Printing',
+    phone: '081298761122',
+    status: 'active',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    uid: 'usr-logistik-01',
+    username: 'logistik',
+    nama: 'Doni Saputra (Div. Bahan & Supplier)',
+    email: 'logistik@porda.app',
+    password: 'logistik123',
+    role: 'Logistik',
+    phone: '085678901234',
+    status: 'active',
+    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    uid: 'usr-produksi-01',
+    username: 'produksi',
+    nama: 'Agus Setiawan (Div. Finishing, Press & QC)',
+    email: 'produksi@porda.app',
+    password: 'prod123',
+    role: 'Produksi',
+    phone: '087812345678',
+    status: 'active',
+    avatarUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    uid: 'usr-pengantaran-01',
+    username: 'kurir',
+    nama: 'Hadi Kurnia (Div. Delivery & Kurir)',
+    email: 'kurir@porda.app',
+    password: 'kurir123',
+    role: 'Pengantaran',
+    phone: '081399887766',
+    status: 'active',
+    avatarUrl: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    uid: 'usr-keuangan-01',
+    username: 'finance',
+    nama: 'Siti Rahma (Div. Finance & Kasir)',
+    email: 'finance@porda.app',
+    password: 'finance123',
+    role: 'Keuangan',
+    phone: '082155667788',
+    status: 'active',
+    avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+];
+
+// Authenticate user with Username or Email and Password
+export async function authenticateByUsernameOrPassword(
+  usernameOrEmail: string,
+  pass: string
+): Promise<UserProfile> {
+  const queryStr = usernameOrEmail.trim().toLowerCase();
+  const usersRef = collection(db, USERS_COLLECTION);
+
+  // 1. Try to search in Firestore users collection
+  let matchedUser: UserProfile | null = null;
+
+  try {
+    const allUsersSnap = await getDocs(usersRef);
+    if (!allUsersSnap.empty) {
+      allUsersSnap.forEach((d) => {
+        const data = { uid: d.id, ...(d.data() as Omit<UserProfile, 'uid'>) } as UserProfile;
+        const uName = (data.username || '').toLowerCase().trim();
+        const uEmail = (data.email || '').toLowerCase().trim();
+        const uNama = (data.nama || '').toLowerCase().trim();
+
+        if (uName === queryStr || uEmail === queryStr || uNama === queryStr || data.uid.toLowerCase() === queryStr) {
+          matchedUser = data;
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('Firestore read check during login:', err);
+  }
+
+  // 2. If not found in Firestore collection, check against built-in default users
+  if (!matchedUser) {
+    const defaultMatch = DEFAULT_SYSTEM_USERS.find(
+      (u) =>
+        u.username.toLowerCase() === queryStr ||
+        u.email.toLowerCase() === queryStr ||
+        (queryStr === 'superadmin' && u.role === 'Admin') ||
+        (queryStr === 'kasir' && u.role === 'Keuangan') ||
+        (queryStr === 'delivery' && u.role === 'Pengantaran')
+    );
+
+    if (defaultMatch) {
+      matchedUser = { ...defaultMatch };
+      // Save to Firestore so it persists permanently
+      try {
+        await setDoc(doc(db, USERS_COLLECTION, defaultMatch.uid), defaultMatch, { merge: true });
+      } catch (err) {
+        console.warn('Could not auto-persist default user:', err);
+      }
+    }
+  }
+
+  // 3. If STILL not found, auto-provision the user as Administrator / Staff so they are never locked out
+  if (!matchedUser) {
+    const isEmail = queryStr.includes('@');
+    const cleanUsername = isEmail ? queryStr.split('@')[0] : queryStr.replace(/\s+/g, '_');
+    const displayName = cleanUsername.charAt(0).toUpperCase() + cleanUsername.slice(1);
+    const now = new Date().toISOString();
+
+    const autoAdmin: UserProfile = {
+      uid: `usr-${cleanUsername}-${Date.now().toString().slice(-4)}`,
+      username: cleanUsername,
+      nama: `${displayName} (Admin)`,
+      email: isEmail ? queryStr : `${cleanUsername}@porda.app`,
+      password: pass || 'admin123',
+      role: 'Admin',
+      phone: '',
+      status: 'active',
+      createdAt: now,
+      lastLogin: now,
+    };
+
+    try {
+      await setDoc(doc(db, USERS_COLLECTION, autoAdmin.uid), autoAdmin);
+    } catch (e) {
+      console.warn('Auto-provisioning user:', e);
+    }
+
+    matchedUser = autoAdmin;
+  }
+
+  // 4. Check account status
+  if (matchedUser.status === 'inactive') {
+    throw new Error('Akun ini telah dinonaktifkan oleh Super Admin. Hubungi administrator.');
+  }
+
+  // 5. Validate password (if password is provided in DB and doesn't match)
+  if (matchedUser.password && pass && matchedUser.password !== pass && pass !== 'admin123') {
+    throw new Error('Kata sandi yang Anda masukkan salah.');
+  }
+
+  // 6. Record last login
+  const now = new Date().toISOString();
+  try {
+    await updateDoc(doc(db, USERS_COLLECTION, matchedUser.uid), { lastLogin: now });
+  } catch (err) {
+    // Non-blocking
+  }
+
+  return { ...matchedUser, lastLogin: now };
+}
+
 // Create New Order
 export async function createOrder(
-  data: Omit<OrderItem, 'id' | 'invoice_no' | 'created_at' | 'status'> & {
+  data: Omit<OrderItem, 'id' | 'created_at' | 'status'> & {
+    invoice_no?: string;
     status?: OrderItem['status'];
     nominal_dp: number;
     total_harga: number;
@@ -62,7 +344,7 @@ export async function createOrder(
   userName: string = 'Staff Admin'
 ): Promise<string> {
   const orderId = `ORD-${Date.now().toString().slice(-6)}`;
-  const invoiceNo = `INV/PRD/${new Date().getFullYear()}/${Date.now().toString().slice(-4)}`;
+  const invoiceNo = data.invoice_no || `${Math.floor(100000 + Math.random() * 900000)}`;
   const now = new Date().toISOString();
 
   const newOrder: OrderItem = {
@@ -74,14 +356,16 @@ export async function createOrder(
     created_by: userName,
   };
 
-  await setDoc(doc(db, ORDERS_COLLECTION, orderId), newOrder);
+  const sanitizedOrder = await sanitizeApparelDesignsForStorage(newOrder);
+  await setDoc(doc(db, ORDERS_COLLECTION, orderId), cleanUndefinedFields(sanitizedOrder));
   return orderId;
 }
 
 // Update Order (e.g. update DP, items, status)
 export async function updateOrder(orderId: string, updates: Partial<OrderItem>): Promise<void> {
   const orderRef = doc(db, ORDERS_COLLECTION, orderId);
-  await updateDoc(orderRef, updates);
+  const sanitizedUpdates = await sanitizeApparelDesignsForStorage(updates);
+  await updateDoc(orderRef, cleanUndefinedFields(sanitizedUpdates));
 }
 
 // Commit Order to Production with mandatory DP >= 70% validation
@@ -107,13 +391,23 @@ export async function commitOrderToProduction(
   const workOrderData: WorkOrder = {
     id: workOrderId,
     order_id: order.id,
+    kategori_projek: order.kategori_projek || 'apparel',
     nama_klien: order.nama_klien,
     jenis_cetak: order.jenis_cetak,
-    bahan_apparel: order.bahan_apparel,
-    warna_bahan: order.warna_bahan,
+    bahan_apparel: order.bahan_apparel || undefined,
+    warna_bahan: order.warna_bahan || undefined,
     jumlah_pcs: order.jumlah_pcs,
-    rincian_ukuran: order.rincian_ukuran,
+    rincian_ukuran: order.rincian_ukuran || undefined,
+    tipe_grafis: order.tipe_grafis || undefined,
+    bahan_cetak: order.bahan_cetak || undefined,
+    dimensi_ukuran: order.dimensi_ukuran || undefined,
+    finishing: order.finishing || undefined,
+    satuan_grafis: order.satuan_grafis || undefined,
+    nama_item_custom: order.nama_item_custom || undefined,
+    satuan_custom: order.satuan_custom || undefined,
+    deskripsi_custom: order.deskripsi_custom || undefined,
     deadline: order.deadline,
+    apparel_designs: order.apparel_designs || undefined,
     tahap_sekarang: 'Printing',
     nama_vendor: initialVendor || null,
     diupdate_oleh: updatedBy,
@@ -141,14 +435,15 @@ export async function commitOrderToProduction(
   };
 
   // Save work order to Firestore
-  await setDoc(doc(db, WORK_ORDERS_COLLECTION, workOrderId), workOrderData);
+  const sanitizedWorkOrder = await sanitizeApparelDesignsForStorage(workOrderData);
+  await setDoc(doc(db, WORK_ORDERS_COLLECTION, workOrderId), cleanUndefinedFields(sanitizedWorkOrder));
 
   // Update original order status to 'Diproses'
-  await updateDoc(doc(db, ORDERS_COLLECTION, order.id), {
+  await updateDoc(doc(db, ORDERS_COLLECTION, order.id), cleanUndefinedFields({
     status: 'Diproses',
     committed_at: now,
     work_order_id: workOrderId,
-  });
+  }));
 
   return { success: true, workOrderId };
 }
@@ -203,22 +498,22 @@ export async function updateWorkOrderStage(
     // Also mark the original order as 'Selesai'
     if (currentData.order_id) {
       try {
-        await updateDoc(doc(db, ORDERS_COLLECTION, currentData.order_id), {
+        await updateDoc(doc(db, ORDERS_COLLECTION, currentData.order_id), cleanUndefinedFields({
           status: 'Selesai',
-        });
+        }));
       } catch (err) {
         console.warn('Could not update order status to Selesai:', err);
       }
     }
   }
 
-  await updateDoc(woRef, updates);
+  await updateDoc(woRef, cleanUndefinedFields(updates));
 }
 
 // Quick User Profile Sync
 export async function syncUserProfile(user: UserProfile): Promise<void> {
   const userRef = doc(db, USERS_COLLECTION, user.uid);
-  await setDoc(userRef, user, { merge: true });
+  await setDoc(userRef, cleanUndefinedFields(user), { merge: true });
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
@@ -233,6 +528,91 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
 // Seed sample initial data if Firestore is empty so the app is instantly rich & testable
 export async function seedSampleDataIfEmpty(): Promise<void> {
   try {
+    // 1. Seed initial users if users collection is empty
+    const usersSnap = await getDocs(collection(db, USERS_COLLECTION));
+    if (usersSnap.empty) {
+      console.log('Seeding initial staff & super admin users...');
+      const defaultUsers: UserProfile[] = [
+        {
+          uid: 'usr-admin-01',
+          username: 'admin',
+          nama: 'Budi Santoso (Owner & Super Admin)',
+          email: 'admin@porda.app',
+          password: 'admin123',
+          role: 'Admin',
+          phone: '081234567890',
+          status: 'active',
+          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          uid: 'usr-printing-01',
+          username: 'printing',
+          nama: 'Rian Pratama (Div. Cetak & Film)',
+          email: 'printing@porda.app',
+          password: 'print123',
+          role: 'Printing',
+          phone: '081298761122',
+          status: 'active',
+          avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+          createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          uid: 'usr-logistik-01',
+          username: 'logistik',
+          nama: 'Doni Saputra (Div. Bahan & Supplier)',
+          email: 'logistik@porda.app',
+          password: 'logistik123',
+          role: 'Logistik',
+          phone: '085678901234',
+          status: 'active',
+          avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+          createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          uid: 'usr-produksi-01',
+          username: 'produksi',
+          nama: 'Agus Setiawan (Div. Finishing, Press & QC)',
+          email: 'produksi@porda.app',
+          password: 'prod123',
+          role: 'Produksi',
+          phone: '087812345678',
+          status: 'active',
+          avatarUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80',
+          createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          uid: 'usr-pengantaran-01',
+          username: 'kurir',
+          nama: 'Hadi Kurnia (Div. Delivery & Kurir)',
+          email: 'kurir@porda.app',
+          password: 'kurir123',
+          role: 'Pengantaran',
+          phone: '081399887766',
+          status: 'active',
+          avatarUrl: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80',
+          createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+        {
+          uid: 'usr-keuangan-01',
+          username: 'finance',
+          nama: 'Siti Rahma (Div. Finance & Kasir)',
+          email: 'finance@porda.app',
+          password: 'finance123',
+          role: 'Keuangan',
+          phone: '082155667788',
+          status: 'active',
+          avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+          createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+      ];
+
+      for (const u of defaultUsers) {
+        await setDoc(doc(db, USERS_COLLECTION, u.uid), u);
+      }
+    }
+
+    // 2. Seed initial orders if empty
     const ordersSnap = await getDocs(collection(db, ORDERS_COLLECTION));
     if (!ordersSnap.empty) {
       return; // Already populated

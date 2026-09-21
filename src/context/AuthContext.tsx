@@ -3,23 +3,33 @@ import {
   User,
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   signOut,
-  GoogleAuthProvider,
-  signInWithPopup,
 } from 'firebase/auth';
 import { auth } from '../firebase';
 import { UserProfile, UserRole } from '../types';
-import { getUserProfile, syncUserProfile, seedSampleDataIfEmpty } from '../services/dbService';
+import {
+  getUserProfile,
+  syncUserProfile,
+  seedSampleDataIfEmpty,
+  authenticateByUsernameOrPassword,
+  createUserByAdmin,
+} from '../services/dbService';
 
 interface AuthContextType {
   currentUser: User | null;
   userProfile: UserProfile | null;
   role: UserRole;
+  isSuperAdmin: boolean;
   loading: boolean;
-  login: (email: string, pass: string) => Promise<void>;
-  register: (email: string, pass: string, nama: string, role: UserRole) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
+  login: (usernameOrEmail: string, pass: string) => Promise<void>;
+  createAccountByAdmin: (data: {
+    username: string;
+    nama: string;
+    role: UserRole;
+    password?: string;
+    phone?: string;
+    email?: string;
+  }) => Promise<UserProfile>;
   quickDemoLogin: (targetRole: UserRole) => Promise<void>;
   switchRole: (newRole: UserRole) => Promise<void>;
   logout: () => Promise<void>;
@@ -27,35 +37,41 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEMO_PROFILES: Record<UserRole, { nama: string; email: string; avatar: string }> = {
+const DEMO_PROFILES: Record<UserRole, { username: string; nama: string; email: string; avatar: string }> = {
   Admin: {
-    nama: 'Budi Santoso (Owner)',
-    email: 'admin.porda@gmail.com',
+    username: 'admin',
+    nama: 'Budi Santoso (Owner & Super Admin)',
+    email: 'admin@porda.app',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
   },
   Printing: {
-    nama: 'Rian Pratama (Div. Cetak)',
-    email: 'printing.porda@gmail.com',
+    username: 'printing',
+    nama: 'Rian Pratama (Div. Cetak & Film)',
+    email: 'printing@porda.app',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
   },
   Logistik: {
+    username: 'logistik',
     nama: 'Doni Saputra (Div. Bahan & Supplier)',
-    email: 'logistik.porda@gmail.com',
+    email: 'logistik@porda.app',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
   },
   Produksi: {
+    username: 'produksi',
     nama: 'Agus Setiawan (Div. Finishing & QC)',
-    email: 'produksi.porda@gmail.com',
+    email: 'produksi@porda.app',
     avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80',
   },
   Pengantaran: {
+    username: 'kurir',
     nama: 'Hadi Kurnia (Div. Delivery & Kurir)',
-    email: 'kurir.porda@gmail.com',
+    email: 'kurir@porda.app',
     avatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80',
   },
   Keuangan: {
-    nama: 'Siti Rahma (Div. Finance)',
-    email: 'finance.porda@gmail.com',
+    username: 'finance',
+    nama: 'Siti Rahma (Div. Finance & Kasir)',
+    email: 'finance@porda.app',
     avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
   },
 };
@@ -75,41 +91,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [loading, setLoading] = useState(true);
 
-  // Initialize and listen to Auth state
+  // Initialize and listen to Auth state and database
   useEffect(() => {
-    // Seed initial sample data in background
+    // Seed initial sample data & users in background if empty
     seedSampleDataIfEmpty();
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
-      if (user) {
+      if (user && !userProfile) {
         try {
           const profile = await getUserProfile(user.uid);
           if (profile) {
             setUserProfile(profile);
             localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(profile));
-          } else {
-            const newProfile: UserProfile = {
-              uid: user.uid,
-              nama: user.displayName || user.email?.split('@')[0] || 'Staff Porda',
-              email: user.email || 'staff@porda.app',
-              role: 'Admin',
-              createdAt: new Date().toISOString(),
-            };
-            await syncUserProfile(newProfile);
-            setUserProfile(newProfile);
-            localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(newProfile));
           }
         } catch (err) {
-          console.error('Error fetching user profile:', err);
-          const fallbackProfile: UserProfile = {
-            uid: user.uid,
-            nama: user.displayName || user.email?.split('@')[0] || 'Staff Porda',
-            email: user.email || 'staff@porda.app',
-            role: 'Admin',
-          };
-          setUserProfile(fallbackProfile);
-          localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(fallbackProfile));
+          console.warn('Error fetching user profile from auth state:', err);
         }
       }
       setLoading(false);
@@ -118,47 +115,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const loginWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    const cred = await signInWithPopup(auth, provider);
-    const user = cred.user;
-    let profile = await getUserProfile(user.uid);
-    if (!profile) {
-      profile = {
-        uid: user.uid,
-        nama: user.displayName || user.email?.split('@')[0] || 'Staff Porda',
-        email: user.email || 'staff@porda.app',
-        role: 'Admin',
-        avatarUrl: user.photoURL || undefined,
-        createdAt: new Date().toISOString(),
-      };
-      await syncUserProfile(profile);
-    }
-    setUserProfile(profile);
-    localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(profile));
-  };
-
-  const login = async (email: string, pass: string) => {
-    const cred = await signInWithEmailAndPassword(auth, email, pass);
-    const profile = await getUserProfile(cred.user.uid);
-    if (profile) {
+  const login = async (usernameOrEmail: string, pass: string) => {
+    setLoading(true);
+    try {
+      // 1. Authenticate against Firestore User Database (Supports Username or Email)
+      const profile = await authenticateByUsernameOrPassword(usernameOrEmail, pass);
       setUserProfile(profile);
       localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(profile));
+
+      // Optional: try signing into Firebase Auth in background if email/pass matches
+      try {
+        if (profile.email) {
+          await signInWithEmailAndPassword(auth, profile.email, pass);
+        }
+      } catch (e) {
+        // Non-blocking for custom username store
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const register = async (email: string, pass: string, nama: string, role: UserRole) => {
-    const cred = await createUserWithEmailAndPassword(auth, email, pass);
-    const newProfile: UserProfile = {
-      uid: cred.user.uid,
-      nama,
-      email,
-      role,
-      createdAt: new Date().toISOString(),
-    };
-    await syncUserProfile(newProfile);
-    setUserProfile(newProfile);
-    localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(newProfile));
+  const createAccountByAdmin = async (data: {
+    username: string;
+    nama: string;
+    role: UserRole;
+    password?: string;
+    phone?: string;
+    email?: string;
+  }): Promise<UserProfile> => {
+    if (userProfile?.role !== 'Admin') {
+      throw new Error('Akses ditolak: Hanya Super Admin yang dapat membuat akun pengguna baru.');
+    }
+    return await createUserByAdmin(data);
   };
 
   const quickDemoLogin = async (targetRole: UserRole) => {
@@ -166,18 +155,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const demo = DEMO_PROFILES[targetRole];
       const demoProfile: UserProfile = {
-        uid: auth.currentUser?.uid || `demo-${targetRole.toLowerCase()}-${Date.now()}`,
+        uid: auth.currentUser?.uid || `usr-demo-${targetRole.toLowerCase()}`,
+        username: demo.username,
         nama: demo.nama,
         email: demo.email,
         role: targetRole,
         avatarUrl: demo.avatar,
+        status: 'active',
         createdAt: new Date().toISOString(),
       };
       
       setUserProfile(demoProfile);
       localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(demoProfile));
 
-      // Attempt to sync to Firestore if possible, ignore non-blocking errors
+      // Attempt to sync to Firestore if possible
       try {
         await syncUserProfile(demoProfile);
       } catch (err) {
@@ -192,13 +183,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const demo = DEMO_PROFILES[newRole];
     const updated: UserProfile = {
       ...(userProfile || {
-        uid: auth.currentUser?.uid || `demo-${newRole.toLowerCase()}`,
+        uid: auth.currentUser?.uid || `usr-demo-${newRole.toLowerCase()}`,
+        username: demo.username,
         email: demo.email,
         createdAt: new Date().toISOString(),
       }),
+      username: userProfile?.username || demo.username,
       role: newRole,
       nama: demo.nama,
       avatarUrl: demo.avatar,
+      status: 'active',
     };
     setUserProfile(updated);
     localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(updated));
@@ -220,6 +214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const role: UserRole = userProfile?.role || 'Admin';
+  const isSuperAdmin = role === 'Admin';
 
   return (
     <AuthContext.Provider
@@ -227,10 +222,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser,
         userProfile,
         role,
+        isSuperAdmin,
         loading,
         login,
-        register,
-        loginWithGoogle,
+        createAccountByAdmin,
         quickDemoLogin,
         switchRole,
         logout,

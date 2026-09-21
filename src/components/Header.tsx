@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { UserRole } from '../types';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Sparkles,
   ChevronDown,
@@ -14,6 +16,7 @@ import {
   CircleDollarSign,
   UserCheck,
   CheckCircle2,
+  X,
 } from 'lucide-react';
 
 const ROLE_CONFIG: Record<UserRole, { label: string; icon: React.ElementType; color: string; desc: string }> = {
@@ -63,7 +66,18 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ title, subtitle, badge }) => {
   const { userProfile, role, switchRole, logout } = useAuth();
+  const { info } = useToast();
   const [showRoleModal, setShowRoleModal] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showRoleModal) {
+        setShowRoleModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showRoleModal]);
 
   const CurrentRoleIcon = ROLE_CONFIG[role]?.icon || Layers;
 
@@ -71,9 +85,9 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle, badge }) => {
     <>
       <header
         id="app-header"
-        className="relative bg-[#E63946] text-white pt-6 pb-7 px-5 rounded-b-[38px] shadow-[0_14px_35px_-8px_rgba(230,57,70,0.38)] z-20"
+        className="relative bg-[#E63946] text-white pt-6 pb-7 px-5 sm:px-8 rounded-b-[32px] sm:rounded-b-[38px] lg:rounded-3xl lg:m-5 lg:mb-0 shadow-[0_14px_35px_-8px_rgba(230,57,70,0.38)] z-20"
       >
-        {/* Top bar with branding and active role switcher */}
+        {/* Top bar with branding (mobile) and active role switcher */}
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-inner">
@@ -91,20 +105,31 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle, badge }) => {
           </div>
 
           {/* Quick Role Switcher Pill */}
-          <button
-            id="role-switch-btn"
-            onClick={() => setShowRoleModal(true)}
-            className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-xs font-semibold px-3 py-1.5 rounded-full border border-white/25 backdrop-blur-md shadow-sm cursor-pointer"
-            title="Ganti Role Aktif untuk Pengujian"
-          >
-            <CurrentRoleIcon className="w-3.5 h-3.5" />
-            <span className="truncate max-w-[90px]">{role}</span>
-            <ChevronDown className="w-3 h-3 text-white/70" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              id="role-switch-btn"
+              onClick={() => setShowRoleModal(true)}
+              className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-xs font-semibold px-3 py-1.5 rounded-full border border-white/25 backdrop-blur-md shadow-xs cursor-pointer"
+              title="Ganti Role Aktif untuk Pengujian"
+            >
+              <CurrentRoleIcon className="w-3.5 h-3.5" />
+              <span className="truncate max-w-[100px]">{role}</span>
+              <ChevronDown className="w-3 h-3 text-white/70" />
+            </button>
+
+            <button
+              id="logout-btn"
+              onClick={logout}
+              className="lg:hidden w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 active:scale-90 flex items-center justify-center text-white/90 transition-all border border-white/20 cursor-pointer"
+              title="Keluar / Logout"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Dynamic Title / Greeting */}
-        <div className="flex items-end justify-between mt-2">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mt-2">
           <div>
             {badge && (
               <div className="inline-flex items-center gap-1 bg-white/20 text-white text-[11px] font-semibold px-2.5 py-0.5 rounded-full mb-1.5 backdrop-blur-sm">
@@ -112,108 +137,108 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle, badge }) => {
                 {badge}
               </div>
             )}
-            <h1 className="text-2xl font-bold tracking-tight text-white leading-tight font-['Outfit']">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-white leading-tight font-['Outfit']">
               {title || `Halo, ${userProfile?.nama?.split(' ')[0] || 'Tim Porda'} 👋`}
             </h1>
-            <p className="text-xs text-white/85 mt-0.5 font-medium">
+            <p className="text-xs sm:text-sm text-white/85 mt-0.5 font-medium">
               {subtitle || 'Kelola pesanan apparel & pantau antrean produksi real-time'}
             </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              id="logout-btn"
-              onClick={logout}
-              className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 active:scale-90 flex items-center justify-center text-white/90 transition-all border border-white/20 cursor-pointer"
-              title="Keluar / Logout"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </header>
 
-      {/* Role Switcher Modal for Easy Testing & Multi-Role Demonstration */}
-      {showRoleModal && (
-        <div
-          id="role-selector-modal"
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-4"
-          onClick={() => setShowRoleModal(false)}
-        >
-          <div
-            className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-[0_20px_50px_rgba(0,0,0,0.2)] text-slate-800 animate-in fade-in slide-in-from-bottom-5 duration-200"
-            onClick={(e) => e.stopPropagation()}
+      {/* Role Switcher Modal with Spring Motion Animation */}
+      <AnimatePresence>
+        {showRoleModal && (
+          <motion.div
+            id="role-selector-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-3 sm:p-4"
+            onClick={() => setShowRoleModal(false)}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-red-50 text-[#E63946] flex items-center justify-center">
-                  <UserCheck className="w-4 h-4" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+              className="bg-white rounded-3xl w-full max-w-sm sm:max-w-md p-6 shadow-2xl text-slate-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-red-50 text-[#E63946] flex items-center justify-center">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-slate-900 font-['Outfit']">Pilih Hak Akses (Role)</h3>
+                    <p className="text-xs text-slate-500">Uji coba simulasi 4 alur produksi</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-base text-slate-900">Pilih Hak Akses (Role)</h3>
-                  <p className="text-xs text-slate-500">Uji coba simulasi 4 alur produksi</p>
-                </div>
+                <button
+                  onClick={() => setShowRoleModal(false)}
+                  className="text-slate-400 hover:text-slate-700 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center cursor-pointer transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                onClick={() => setShowRoleModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="mt-4 space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-              {(Object.keys(ROLE_CONFIG) as UserRole[]).map((rKey) => {
-                const conf = ROLE_CONFIG[rKey];
-                const Icon = conf.icon;
-                const isCurrent = role === rKey;
-                return (
-                  <button
-                    key={rKey}
-                    onClick={async () => {
-                      await switchRole(rKey);
-                      setShowRoleModal(false);
-                    }}
-                    className={`w-full flex items-center justify-between p-3 rounded-2xl border transition-all text-left cursor-pointer ${
-                      isCurrent
-                        ? 'border-[#E63946] bg-red-50/70 shadow-sm'
-                        : 'border-slate-200/80 hover:border-red-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                          isCurrent ? 'bg-[#E63946] text-white' : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-bold text-sm text-slate-900">{rKey}</p>
-                          {isCurrent && (
-                            <span className="text-[10px] font-bold bg-[#E63946] text-white px-2 py-0.5 rounded-full">
-                              Aktif
-                            </span>
-                          )}
+              <div className="mt-4 space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                {(Object.keys(ROLE_CONFIG) as UserRole[]).map((rKey) => {
+                  const conf = ROLE_CONFIG[rKey];
+                  const Icon = conf.icon;
+                  const isCurrent = role === rKey;
+                  return (
+                    <button
+                      key={rKey}
+                      onClick={async () => {
+                        await switchRole(rKey);
+                        info('Role Diperbarui', `Beralih ke hak akses ${rKey}`);
+                        setShowRoleModal(false);
+                      }}
+                      className={`w-full flex items-center justify-between p-3 rounded-2xl border transition-all text-left cursor-pointer active:scale-98 ${
+                        isCurrent
+                          ? 'border-[#E63946] bg-red-50/70 shadow-xs ring-2 ring-red-500/20'
+                          : 'border-slate-200/80 hover:border-red-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                            isCurrent ? 'bg-[#E63946] text-white shadow-xs' : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          <Icon className="w-5 h-5" />
                         </div>
-                        <p className="text-xs text-slate-500 line-clamp-1">{conf.desc}</p>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-bold text-sm text-slate-900">{rKey}</p>
+                            {isCurrent && (
+                              <span className="text-[10px] font-bold bg-[#E63946] text-white px-2 py-0.5 rounded-full">
+                                Aktif
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 line-clamp-1">{conf.desc}</p>
+                        </div>
                       </div>
-                    </div>
-                    {isCurrent && <CheckCircle2 className="w-5 h-5 text-[#E63946]" />}
-                  </button>
-                );
-              })}
-            </div>
+                      {isCurrent && <CheckCircle2 className="w-5 h-5 text-[#E63946]" />}
+                    </button>
+                  );
+                })}
+              </div>
 
-            <div className="mt-5 pt-3 border-t border-slate-100 text-center">
-              <p className="text-[11px] text-slate-400">
-                Sistem Porda mengontrol aksi & antrean berdasarkan peran tim.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="mt-5 pt-3 border-t border-slate-100 text-center">
+                <p className="text-[11px] text-slate-400">
+                  Sistem Porda mengontrol aksi & antrean berdasarkan peran tim.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 };
+
