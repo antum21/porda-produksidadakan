@@ -38,6 +38,44 @@ const SUPER_ADMIN_PROFILE = {
   role: 'super_admin' as const,
 };
 
+const SECRET_KEY =
+  process.env.SESSION_SECRET ||
+  process.env.SUPER_ADMIN_PASSWORD ||
+  'porda-erp-secret-key-2026-safe-production';
+
+// Generate cryptographically signed token
+function createSignedToken(user: typeof SUPER_ADMIN_PROFILE) {
+  const payload = {
+    uid: user.uid,
+    username: user.username,
+    nama: user.nama,
+    role: user.role,
+    exp: Date.now() + SESSION_TTL_MS,
+    nonce: crypto.randomBytes(8).toString('hex'),
+  };
+  const str = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', SECRET_KEY).update(str).digest('base64url');
+  return `${str}.${sig}`;
+}
+
+// Verify token
+function verifySignedToken(token?: string) {
+  if (!token || !token.includes('.')) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [str, sig] = parts;
+  const expectedSig = crypto.createHmac('sha256', SECRET_KEY).update(str).digest('base64url');
+  if (sig !== expectedSig) return null;
+
+  try {
+    const payload = JSON.parse(Buffer.from(str, 'base64url').toString('utf-8'));
+    if (Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 // Cryptographically Secure In-Memory Session Store
 interface SessionData {
   token: string;
@@ -159,8 +197,8 @@ app.post('/api/auth/login', async (req, res) => {
   // Clear failed attempts upon success
   clearLoginAttempts(clientIp);
 
-  // Generate cryptographically secure random session token
-  const sessionToken = crypto.randomBytes(32).toString('hex');
+  // Generate cryptographically signed session token
+  const sessionToken = createSignedToken(SUPER_ADMIN_PROFILE);
   const now = Date.now();
   const expiresAt = now + SESSION_TTL_MS;
 
@@ -200,9 +238,11 @@ app.get('/api/auth/session', (req, res) => {
     return;
   }
 
+  // Check active in-memory session or verify cryptographically signed token
   const session = activeSessions.get(token);
+  const verifiedUser = session?.user || verifySignedToken(token);
 
-  if (!session || Date.now() > session.expiresAt) {
+  if (!verifiedUser) {
     if (session) activeSessions.delete(token);
     res.clearCookie(COOKIE_NAME, { path: '/' });
     res.status(401).json({
@@ -214,7 +254,7 @@ app.get('/api/auth/session', (req, res) => {
 
   res.json({
     authenticated: true,
-    user: session.user,
+    user: verifiedUser,
   });
 });
 

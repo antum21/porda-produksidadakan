@@ -183,8 +183,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             </button>
           </form>
 
+          {/* Quick Credential Helper */}
+          <div className="mt-4 p-3 rounded-2xl bg-amber-50/80 border border-amber-200 text-[11px] text-amber-900 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-bold">Kredensial Bawaan:</span>
+              <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-amber-200 text-slate-800 text-[10px]">
+                Admin123
+              </span>
+              <span>/</span>
+              <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-amber-200 text-slate-800 text-[10px]">
+                Admin123
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setUsername('Admin123');
+                setPassword('Admin123');
+              }}
+              className="text-[11px] font-bold text-[#E63946] hover:underline cursor-pointer shrink-0 ml-2"
+            >
+              Isi Otomatis
+            </button>
+          </div>
+
           {/* Security Notice */}
-          <div className="mt-6 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 flex items-center gap-2.5">
+          <div className="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 flex items-center gap-2.5">
             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
             <p className="leading-relaxed">
               Sistem login ERP aman: Menggunakan enkripsi kata sandi sisi server dan sesi HTTP-Only Cookie yang terlindungi.

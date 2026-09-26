@@ -32,11 +32,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check active server-side HTTP-only session on load
   const verifySession = useCallback(async () => {
     try {
+      const storedToken = localStorage.getItem('porda_session_token');
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+      };
+      if (storedToken) {
+        headers['Authorization'] = `Bearer ${storedToken}`;
+      }
+
       const res = await fetch('/api/auth/session', {
         method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
+        headers,
         credentials: 'include', // Sends HTTP-Only session cookie
       });
 
@@ -51,9 +57,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             status: 'active',
           });
         } else {
+          localStorage.removeItem('porda_session_token');
           setUserProfile(null);
         }
       } else {
+        localStorage.removeItem('porda_session_token');
         setUserProfile(null);
       }
     } catch (err) {
@@ -92,6 +100,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(data.error || 'Username atau password salah.');
       }
 
+      if (data.token) {
+        localStorage.setItem('porda_session_token', data.token);
+      }
+
       setUserProfile({
         uid: data.user.uid || 'usr-superadmin-01',
         username: data.user.username,
@@ -106,14 +118,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      const storedToken = localStorage.getItem('porda_session_token');
+      const headers: Record<string, string> = { 'Accept': 'application/json' };
+      if (storedToken) headers['Authorization'] = `Bearer ${storedToken}`;
+      localStorage.removeItem('porda_session_token');
+
       await fetch('/api/auth/logout', {
         method: 'POST',
-        headers: { 'Accept': 'application/json' },
+        headers,
         credentials: 'include',
       });
     } catch (err) {
       console.warn('Logout note:', err);
     } finally {
+      localStorage.removeItem('porda_session_token');
       setUserProfile(null);
     }
   };

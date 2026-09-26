@@ -3,18 +3,53 @@ import crypto from 'crypto';
 
 const INITIAL_SUPER_ADMIN_USERNAME = 'Admin123';
 const INITIAL_SETUP_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || 'Admin123';
-const superAdminPasswordHash =
+let superAdminPasswordHash =
   process.env.SUPER_ADMIN_PASSWORD_HASH || bcrypt.hashSync(INITIAL_SETUP_PASSWORD, 10);
 
 const SUPER_ADMIN_PROFILE = {
   uid: 'usr-superadmin-01',
   username: INITIAL_SUPER_ADMIN_USERNAME,
   nama: 'Super Admin PORDA',
-  role: 'super_admin',
+  role: 'super_admin' as const,
 };
 
-// In-memory sessions (for serverless container lifetime)
-const activeSessions = new Map<string, { token: string; user: any; expiresAt: number }>();
+const SECRET_KEY =
+  process.env.SESSION_SECRET ||
+  process.env.SUPER_ADMIN_PASSWORD ||
+  'porda-erp-secret-key-2026-safe-production';
+
+// Generate cryptographically signed stateless token for serverless compatibility
+function createSignedToken(user: typeof SUPER_ADMIN_PROFILE) {
+  const payload = {
+    uid: user.uid,
+    username: user.username,
+    nama: user.nama,
+    role: user.role,
+    exp: Date.now() + 24 * 60 * 60 * 1000,
+    nonce: crypto.randomBytes(8).toString('hex'),
+  };
+  const str = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', SECRET_KEY).update(str).digest('base64url');
+  return `${str}.${sig}`;
+}
+
+// Verify signature and expiration
+function verifySignedToken(token?: string) {
+  if (!token || !token.includes('.')) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [str, sig] = parts;
+  const expectedSig = crypto.createHmac('sha256', SECRET_KEY).update(str).digest('base64url');
+  if (sig !== expectedSig) return null;
+
+  try {
+    const payload = JSON.parse(Buffer.from(str, 'base64url').toString('utf-8'));
+    if (Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 function parseCookies(cookieHeader?: string): Record<string, string> {
   const list: Record<string, string> = {};
@@ -33,29 +68,24 @@ export const handler = async (event: any) => {
   const httpMethod = event.httpMethod || 'GET';
   const cookies = parseCookies(event.headers?.cookie);
   const authHeader = event.headers?.authorization;
-  const token = cookies['porda_session'] || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined);
+  const token =
+    cookies['porda_session'] ||
+    (authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined);
 
   // 1. Session check: GET /api/auth/session
   if (path.endsWith('/session') && httpMethod === 'GET') {
-    if (!token) {
+    const userPayload = verifySignedToken(token);
+    if (!userPayload) {
       return {
         statusCode: 401,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ authenticated: false, error: 'Tidak ada sesi aktif.' }),
-      };
-    }
-    const session = activeSessions.get(token);
-    if (!session || Date.now() > session.expiresAt) {
-      return {
-        statusCode: 401,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ authenticated: false, error: 'Sesi kedaluwarsa.' }),
+        body: JSON.stringify({ authenticated: false, error: 'Tidak ada sesi aktif atau sesi telah kedaluwarsa.' }),
       };
     }
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ authenticated: true, user: session.user }),
+      body: JSON.stringify({ authenticated: true, user: userPayload }),
     };
   }
 
@@ -87,14 +117,7 @@ export const handler = async (event: any) => {
         };
       }
 
-      const sessionToken = crypto.randomBytes(32).toString('hex');
-      const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
-      activeSessions.set(sessionToken, {
-        token: sessionToken,
-        user: SUPER_ADMIN_PROFILE,
-        expiresAt,
-      });
-
+      const sessionToken = createSignedToken(SUPER_ADMIN_PROFILE);
       const cookieVal = `porda_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400; Secure`;
 
       return {
@@ -105,18 +128,17 @@ export const handler = async (event: any) => {
         },
         body: JSON.stringify({ success: true, token: sessionToken, user: SUPER_ADMIN_PROFILE }),
       };
-    } catch (e: any) {
+    } catch {
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ success: false, error: 'Invalid payload.' }),
+        body: JSON.stringify({ success: false, error: 'Format data login tidak valid.' }),
       };
     }
   }
 
   // 3. Logout: POST /api/auth/logout
   if (path.endsWith('/logout') && httpMethod === 'POST') {
-    if (token) activeSessions.delete(token);
     return {
       statusCode: 200,
       headers: {
@@ -125,6 +147,52 @@ export const handler = async (event: any) => {
       },
       body: JSON.stringify({ success: true, message: 'Berhasil keluar.' }),
     };
+  }
+
+  // 4. Change Password: POST /api/auth/change-password
+  if (path.endsWith('/change-password') && httpMethod === 'POST') {
+    const userPayload = verifySignedToken(token);
+    if (!userPayload) {
+      return {
+        statusCode: 401,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: false, error: 'Akses ditolak: Sesi tidak valid.' }),
+      };
+    }
+
+    try {
+      const body = JSON.parse(event.body || '{}');
+      const { currentPassword, newPassword } = body;
+      if (!currentPassword || !newPassword || String(newPassword).length < 6) {
+        return {
+          statusCode: 400,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ success: false, error: 'Password baru minimal harus 6 karakter.' }),
+        };
+      }
+
+      const isValidCurrent = await bcrypt.compare(String(currentPassword), superAdminPasswordHash);
+      if (!isValidCurrent) {
+        return {
+          statusCode: 400,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ success: false, error: 'Password saat ini salah.' }),
+        };
+      }
+
+      superAdminPasswordHash = await bcrypt.hash(String(newPassword), 10);
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, message: 'Kata sandi berhasil diperbarui.' }),
+      };
+    } catch {
+      return {
+        statusCode: 400,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: false, error: 'Payload tidak valid.' }),
+      };
+    }
   }
 
   return {
