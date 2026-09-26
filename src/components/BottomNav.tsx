@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FileText, Kanban, Users, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, FileText, Kanban, Users, PlusCircle, CircleDollarSign } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface BottomNavProps {
@@ -44,6 +44,21 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenNewOrder }) => {
         >
           <FileText className="w-4 h-4" />
           <span className="hidden sm:inline">Pesanan</span>
+        </NavLink>
+
+        <NavLink
+          id="nav-finance-link"
+          to="/finance"
+          className={({ isActive }) =>
+            `flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+              isActive
+                ? 'bg-[#E63946] text-white shadow-md shadow-red-500/30'
+                : 'text-slate-500 hover:text-[#E63946] hover:bg-red-50/50'
+            }`
+          }
+        >
+          <CircleDollarSign className="w-4 h-4" />
+          <span className="hidden sm:inline">Keuangan</span>
         </NavLink>
 
         <NavLink

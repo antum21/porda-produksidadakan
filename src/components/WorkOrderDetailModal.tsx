@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { WorkOrder, ProductionStage, UserRole } from '../types';
-import { updateWorkOrderStage } from '../services/dbService';
+import React, { useState, useEffect, useRef } from 'react';
+import { WorkOrder, ProductionStage } from '../types';
+import { updateWorkOrderStage, attachImageToWorkOrder } from '../services/dbService';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { playFeedbackSound } from '../utils/audio';
+import { uploadProductionImage, validateImageFile } from '../services/storageService';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -19,11 +20,17 @@ import {
   ArrowLeft,
   Calendar,
   Layers,
-  Sparkles,
   Save,
   FileText,
+  Upload,
+  Image as ImageIcon,
+  ZoomIn,
+  Loader2,
+  ExternalLink,
+  ClipboardPaste,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { extractImageFromClipboardEvent, readImageFromSystemClipboard } from '../utils/clipboardHelper';
 
 interface WorkOrderDetailModalProps {
   workOrder: WorkOrder | null;
@@ -31,7 +38,7 @@ interface WorkOrderDetailModalProps {
   onClose: () => void;
 }
 
-const STAGES: ProductionStage[] = ['Printing', 'Belanja', 'Produksi', 'Pengantaran'];
+const STAGES: ProductionStage[] = ['Printing', 'Logistik', 'Produksi', 'Pengantaran'];
 
 export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
   workOrder,
@@ -41,21 +48,31 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
   const { userProfile, role } = useAuth();
   const { success, info, error: toastError } = useToast();
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [vendorInput, setVendorInput] = useState(workOrder?.nama_vendor || '');
   const [catatanInput, setCatatanInput] = useState('');
   const [checklist, setChecklist] = useState<NonNullable<WorkOrder['checklist']>>(
     workOrder?.checklist || {}
   );
 
+  // Lightbox Zoom state for inspection
+  const [zoomImage, setZoomImage] = useState<{ url: string; title: string; subtitle?: string } | null>(null);
+
+  const lastPasteTimeRef = useRef<number>(0);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
+      if (e.key === 'Escape') {
+        if (zoomImage) {
+          setZoomImage(null);
+        } else if (isOpen) {
+          onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, zoomImage, onClose]);
 
   useEffect(() => {
     if (workOrder) {
@@ -65,11 +82,130 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
     }
   }, [workOrder]);
 
+  // Handle image upload from SPK detail via Firebase Storage / Data fallback
+  const handleUploadNewImage = async (file: File) => {
+    if (!file || !workOrder) return;
+
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      toastError('Gagal Mengunggah', validation.error || 'Format atau ukuran file tidak didukung');
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const uploadRes = await uploadProductionImage(
+        workOrder.id,
+        file,
+        userProfile?.nama || role
+      );
+      await attachImageToWorkOrder(
+        workOrder.id,
+        { url: uploadRes.downloadUrl, label: file.name || 'Foto Tambahan Produksi' },
+        userProfile?.nama || role
+      );
+      playFeedbackSound('click');
+      success('Foto Berhasil Diunggah', 'Gambar sampel/desain berhasil diunggah ke Firebase Storage.');
+    } catch (err: any) {
+      console.error('Error uploading image to storage:', err);
+      toastError('Gagal Mengunggah', err?.message || 'Gagal memproses gambar');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  // Global paste handler when modal is open (called unconditionally to respect Rules of Hooks)
+  useEffect(() => {
+    if (!isOpen || !workOrder) return;
+    const handlePaste = async (e: ClipboardEvent) => {
+      if (!workOrder) return;
+      // Debounce duplicate triggers within 400ms
+      if (Date.now() - lastPasteTimeRef.current < 400) return;
+      lastPasteTimeRef.current = Date.now();
+
+      const file = await extractImageFromClipboardEvent(e);
+      if (file) {
+        e.preventDefault();
+        e.stopPropagation();
+        await handleUploadNewImage(file);
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [isOpen, workOrder]);
+
   if (!workOrder) return null;
 
-  const currentStageIndex = STAGES.indexOf(workOrder.tahap_sekarang);
+  const normalizeStageName = (st: string): ProductionStage => {
+    if (st === 'Belanja' || st === 'Logistik') return 'Logistik';
+    if (st === 'Produksi') return 'Produksi';
+    if (st === 'Pengantaran') return 'Pengantaran';
+    return 'Printing';
+  };
+
+  const currNormStage = normalizeStageName(workOrder.tahap_sekarang);
+  const currentStageIndex = STAGES.indexOf(currNormStage);
   const isFinalStage = currentStageIndex === STAGES.length - 1;
   const isCompleted = !!workOrder.completed_at;
+
+  // Collect all available preview images (designs, mockup, production photos)
+  const allImages: Array<{ url: string; title: string; subtitle?: string; type: 'design' | 'mockup' | 'photo' }> = [];
+
+  if (workOrder.apparel_designs && Array.isArray(workOrder.apparel_designs)) {
+    workOrder.apparel_designs.forEach((d, idx) => {
+      if (d.gambar_preview) {
+        allImages.push({
+          url: d.gambar_preview,
+          title: d.nama_desain || `Desain #${idx + 1}`,
+          subtitle: d.file_name || 'Artwork Desain',
+          type: 'design',
+        });
+      }
+    });
+  }
+
+  if (workOrder.mockup_url) {
+    allImages.push({
+      url: workOrder.mockup_url,
+      title: 'Mockup / File Master',
+      subtitle: 'Referensi Visual Pesanan',
+      type: 'mockup',
+    });
+  }
+
+  if (workOrder.production_images && Array.isArray(workOrder.production_images)) {
+    workOrder.production_images.forEach((img, idx) => {
+      allImages.push({
+        url: img.url,
+        title: img.label || `Foto Produksi #${idx + 1}`,
+        subtitle: img.uploaded_at ? new Date(img.uploaded_at).toLocaleString('id-ID') : undefined,
+        type: 'photo',
+      });
+    });
+  }
+
+  // Paste handler from button click
+  const handlePasteWorkOrderImage = async () => {
+    setUploadingImage(true);
+    try {
+      const res = await readImageFromSystemClipboard();
+      if (res.file) {
+        await handleUploadNewImage(res.file);
+      } else {
+        if (res.isPermissionDenied) {
+          info('Gunakan Ctrl + V', 'Tekan tombol keyboard Ctrl + V untuk langsung menempelkan foto.');
+        } else {
+          toastError('Clipboard Kosong', res.error || 'Salin gambar terlebih dahulu (Screenshot / Copy Image).');
+        }
+      }
+    } catch {
+      info('Gunakan Ctrl + V', 'Tekan tombol keyboard Ctrl + V untuk langsung menempelkan foto.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const handleNextStage = async () => {
     if (currentStageIndex < STAGES.length - 1) {
@@ -120,15 +256,14 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
     try {
       await updateWorkOrderStage(workOrder.id, 'Pengantaran', userProfile?.nama || role, {
         nama_vendor: vendorInput.trim() || null,
-        catatan_tahap: catatanInput.trim() || 'Pesanan telah selesai & terkirim ke klien.',
+        catatan_tahap: catatanInput.trim() || 'Pesanan telah selesai & masuk arsip selesai.',
         checklistUpdates: { ...checklist, delivered_to_customer: true },
         isFinalComplete: true,
       });
 
       playFeedbackSound('complete');
-      success('Produksi Selesai!', `Work Order ${workOrder.id} telah sukses diselesaikan & dikirim.`);
+      success('Produksi Selesai!', `Work Order ${workOrder.id} telah selesai & masuk ke Arsip Selesai.`);
 
-      // Celebration effect
       try {
         confetti({
           particleCount: 80,
@@ -177,7 +312,7 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
           onClick={onClose}
         >
           <motion.div
@@ -186,47 +321,58 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 10 }}
             transition={{ type: 'spring', stiffness: 450, damping: 30 }}
-            className="bg-white rounded-3xl w-full max-w-lg p-5 sm:p-6 shadow-2xl text-slate-800 my-auto max-h-[92vh] flex flex-col"
+            className="bg-white rounded-3xl w-full max-w-2xl p-4 sm:p-6 shadow-2xl text-slate-800 my-auto max-h-[94vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-red-50 text-[#E63946] flex items-center justify-center font-bold">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-red-50 text-[#E63946] flex items-center justify-center font-bold shrink-0">
                   <Cpu className="w-5 h-5" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-slate-900 text-base font-['Outfit']">{workOrder.id}</h3>
                     <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full border border-slate-200">
                       {workOrder.jenis_cetak}
                     </span>
+                    {isCompleted && (
+                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
+                        ✓ Arsip Selesai
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-500 font-semibold">{workOrder.nama_klien}</p>
+                  <p className="text-xs text-slate-500 font-semibold truncate">{workOrder.nama_klien}</p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={onClose}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-all cursor-pointer"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-all cursor-pointer shrink-0"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Scrollable Body / Printable SPK Container */}
-            <div className="mt-4 space-y-4 overflow-y-auto pr-1 flex-1 text-xs" id="printable-spk">
+            <div className="mt-3.5 space-y-4 overflow-y-auto pr-1 flex-1 text-xs" id="printable-spk">
               {/* Visual Step Tracker */}
               <div className="bg-[#F8F5F2] p-3 rounded-2xl">
-                <p className="text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                  Status Alur Produksi:
-                </p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Status Alur Produksi:
+                  </p>
+                  <span className="text-[10px] font-bold text-slate-500">
+                    Tahap: <strong className="text-slate-900">{currNormStage}</strong>
+                  </span>
+                </div>
                 <div className="grid grid-cols-4 gap-1.5 text-center">
                   {STAGES.map((st, idx) => {
                     const isPassed = currentStageIndex > idx || isCompleted;
                     const isCurrent = currentStageIndex === idx && !isCompleted;
                     return (
                       <div
-                        key={st}
+                        key={`stage-${st}-${idx}`}
                         className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all border ${
                           isCurrent
                             ? 'bg-[#E63946] text-white border-[#E63946] shadow-xs'
@@ -243,9 +389,141 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                 </div>
               </div>
 
+              {/* ======================================================== */}
+              {/* PREVIEW GAMBAR & ARTWORK DESAIN (REQUESTED FEATURE)       */}
+              {/* ======================================================== */}
+              <div className="bg-gradient-to-r from-red-50/70 via-slate-50 to-amber-50/40 p-3.5 rounded-2xl border border-red-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-xl bg-[#E63946] text-white flex items-center justify-center">
+                      <ImageIcon className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xs font-['Outfit']">
+                        Preview Gambar & Desain Produksi
+                      </h4>
+                      <p className="text-[10px] text-slate-500">
+                        Klik gambar untuk memperbesar resolusi tinggi
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tombol Unggah Foto Tambahan & Paste Clipboard */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handlePasteWorkOrderImage}
+                      disabled={uploadingImage}
+                      className="inline-flex items-center gap-1 bg-red-50 hover:bg-red-100 text-[#E63946] border border-red-200 px-2.5 py-1 rounded-full text-[10px] font-bold cursor-pointer transition-all shadow-2xs disabled:opacity-50 active:scale-95"
+                      title="Tempel foto dari clipboard (Ctrl+V)"
+                    >
+                      <ClipboardPaste className="w-3 h-3" />
+                      <span>Paste (Ctrl+V)</span>
+                    </button>
+
+                    <label className="inline-flex items-center gap-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-full text-[10px] font-bold cursor-pointer transition-all shadow-2xs active:scale-95">
+                      {uploadingImage ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-[#E63946]" />
+                      ) : (
+                        <Upload className="w-3 h-3 text-[#E63946]" />
+                      )}
+                      <span>{uploadingImage ? 'Mengunggah...' : '+ File'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingImage}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleUploadNewImage(f);
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Grid Gallery Preview Gambar */}
+                {allImages.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {allImages.map((img, i) => (
+                      <div
+                        key={`img-${img.type}-${i}-${img.url.slice(-10)}`}
+                        className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden group hover:border-red-300 transition-all flex flex-col"
+                      >
+                        <div
+                          className="relative h-44 bg-slate-100 flex items-center justify-center overflow-hidden cursor-pointer"
+                          onClick={() => setZoomImage(img)}
+                        >
+                          <img
+                            src={img.url}
+                            alt={img.title}
+                            className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-200"
+                          />
+                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <span className="bg-white/90 text-slate-900 px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-md">
+                              <ZoomIn className="w-3.5 h-3.5 text-[#E63946]" />
+                              <span>Perbesar</span>
+                            </span>
+                          </div>
+                          <span
+                            className={`absolute top-2 left-2 text-[9px] font-black px-2 py-0.5 rounded-full ${
+                              img.type === 'design'
+                                ? 'bg-amber-500 text-white'
+                                : img.type === 'mockup'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-emerald-600 text-white'
+                            }`}
+                          >
+                            {img.type === 'design' ? 'Desain Sablon' : img.type === 'mockup' ? 'Mockup Order' : 'Foto Sampel'}
+                          </span>
+                        </div>
+
+                        <div className="p-2.5 flex items-center justify-between gap-2 border-t border-slate-100">
+                          <div className="min-w-0">
+                            <h5 className="font-bold text-slate-900 text-xs truncate">{img.title}</h5>
+                            {img.subtitle && (
+                              <p className="text-[10px] text-slate-500 truncate">{img.subtitle}</p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setZoomImage(img)}
+                            className="text-[#E63946] hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                            title="Perbesar gambar"
+                          >
+                            <ZoomIn className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-2xl p-6 text-center border border-dashed border-slate-300 space-y-2">
+                    <ImageIcon className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs font-bold text-slate-700">Belum ada preview gambar diunggah</p>
+                    <p className="text-[10px] text-slate-400 max-w-xs mx-auto">
+                      Unggah file artwork desain atau foto sampel kain/cetak agar tim printing & produksi dapat mencocokkan hasil kerja secara presisi.
+                    </p>
+                    <label className="mt-2 inline-flex items-center gap-1.5 bg-[#E63946] hover:bg-red-600 text-white text-xs font-bold px-3.5 py-1.5 rounded-full cursor-pointer transition-all shadow-xs">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Unggah Gambar Sekarang</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleUploadNewImage(f);
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
               {/* Spesifikasi Item Sesuai Kategori */}
-              <div className="bg-slate-50 p-3 rounded-2xl space-y-2 border border-slate-200">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-1 mb-1">
+              <div className="bg-slate-50 p-3.5 rounded-2xl space-y-2 border border-slate-200">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-1.5">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     Spesifikasi SPK Produksi
                   </span>
@@ -304,77 +582,6 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                       </div>
                     )}
                   </>
-                ) : workOrder.apparel_designs && workOrder.apparel_designs.length > 0 ? (
-                  <div className="space-y-3 pt-1">
-                    <div className="flex justify-between items-center text-xs pb-1 border-b border-slate-200">
-                      <span className="text-slate-500">Total Produksi Baju:</span>
-                      <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
-                        {workOrder.jumlah_pcs} Pcs
-                      </span>
-                    </div>
-
-                    {workOrder.apparel_designs.map((design, dIdx) => (
-                      <div key={design.id || dIdx} className="bg-white p-3 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
-                        <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100">
-                          {design.gambar_preview ? (
-                            <img
-                              src={design.gambar_preview}
-                              alt={design.nama_desain || `Desain ${dIdx + 1}`}
-                              className="w-12 h-12 object-cover rounded-lg border border-slate-200 shrink-0"
-                            />
-                          ) : (
-                            <div className="w-12 h-12 rounded-lg bg-red-50 text-[#E63946] border border-red-100 flex items-center justify-center font-bold text-xs shrink-0">
-                              D#{dIdx + 1}
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <h5 className="font-bold text-slate-900 text-xs truncate">
-                              {design.nama_desain || `Desain #${dIdx + 1}`}
-                            </h5>
-                            <p className="text-[10px] text-slate-500 truncate">
-                              {design.file_name || 'File Master Desain'}
-                            </p>
-                          </div>
-                          <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
-                            {design.items.reduce((acc, it) => acc + (it.total_pcs || 0), 0)} pcs
-                          </span>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          {design.items.map((item, iIdx) => (
-                            <div key={item.id || iIdx} className="bg-slate-50 p-2 rounded-lg text-xs space-y-1 border border-slate-200/60">
-                              <div className="flex justify-between font-semibold text-slate-800">
-                                <span>{item.jenis_pesanan || 'Item Kaos'}</span>
-                                <span className="text-slate-900 font-bold">{item.total_pcs} pcs</span>
-                              </div>
-
-                              {item.sablon_list && item.sablon_list.length > 0 && (
-                                <div className="flex flex-wrap gap-1 items-center">
-                                  <span className="text-[10px] text-slate-400">Sablon:</span>
-                                  {item.sablon_list.map((s, sIdx) => (
-                                    <span key={s.id || sIdx} className="bg-white text-slate-700 text-[10px] px-1.5 py-0.5 rounded border border-slate-200">
-                                      {s.nama}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              <div className="flex flex-wrap gap-1 pt-0.5 border-t border-slate-200/50">
-                                {Object.entries(item.sizes).map(([sz, qty]) => {
-                                  if (!qty) return null;
-                                  return (
-                                    <span key={sz} className="bg-white text-slate-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-200">
-                                      {sz}: {qty}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
                 ) : (
                   <>
                     <div className="flex justify-between">
@@ -395,11 +602,11 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                       <div className="pt-1">
                         <span className="text-[10px] text-slate-400 block mb-1 font-semibold">Rincian Size:</span>
                         <div className="flex flex-wrap gap-1">
-                          {Object.entries(workOrder.rincian_ukuran).map(([sz, qty]) => {
+                          {Object.entries(workOrder.rincian_ukuran).map(([sz, qty], szIdx) => {
                             if (!qty) return null;
                             return (
                               <span
-                                key={sz}
+                                key={`sz-${sz}-${szIdx}`}
                                 className="bg-white text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200"
                               >
                                 {sz}: {qty} pcs
@@ -412,19 +619,19 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                   </>
                 )}
 
-                <div className="flex justify-between pt-1 border-t border-slate-200">
+                <div className="flex justify-between pt-1.5 border-t border-slate-200">
                   <span className="text-slate-500">Target Deadline:</span>
                   <span className="font-bold text-red-600">
                     {new Date(workOrder.deadline).toLocaleDateString('id-ID', {
                       day: 'numeric',
-                      month: 'short',
+                      month: 'long',
                       year: 'numeric',
                     })}
                   </span>
                 </div>
               </div>
 
-              {/* Form Vendor (Opsional / Eksternal Cetak & Supplier Blank Apparel) */}
+              {/* Form Vendor */}
               <div className="bg-red-50/50 p-3.5 rounded-2xl border border-red-100 space-y-2">
                 <label className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Building className="w-3.5 h-3.5 text-[#E63946]" />
@@ -437,15 +644,12 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                   onChange={(e) => setVendorInput(e.target.value)}
                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#E63946] transition-colors"
                 />
-                <p className="text-[10px] text-slate-500">
-                  Isi jika tahap Printing atau Belanja blank apparel dialihkan ke vendor pihak ketiga.
-                </p>
               </div>
 
               {/* Checklist Kontrol Kualitas per Tahap */}
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2.5">
                 <p className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Checklist Tim:
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Checklist Kontrol Kualitas:
                 </p>
                 <div className="space-y-1.5 text-slate-700">
                   <label className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors">
@@ -479,7 +683,7 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                       }
                       className="rounded text-[#E63946] focus:ring-red-400 w-4 h-4 cursor-pointer"
                     />
-                    <span>Tahap 3: Curing / Heat Press & Jahit Label Selesai</span>
+                    <span>Tahap 3: Curing / Heat Press & Jahit Selesai</span>
                   </label>
 
                   <label className="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors">
@@ -520,27 +724,56 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                 />
               </div>
 
-              {/* Riwayat Timeline */}
+              {/* Riwayat Timeline dengan Catatan Waktu Lengkap (REQUESTED FEATURE) */}
               {workOrder.riwayat_tahap && workOrder.riwayat_tahap.length > 0 && (
                 <div className="pt-2 border-t border-slate-100">
-                  <p className="font-bold text-slate-600 text-[11px] mb-2">Riwayat Perjalanan Work Order:</p>
-                  <div className="space-y-2 border-l-2 border-red-200 pl-3 ml-2">
-                    {workOrder.riwayat_tahap.map((r, i) => (
-                      <div key={i} className="relative text-[11px]">
-                        <div className="absolute -left-[17px] top-1 w-2 h-2 rounded-full bg-[#E63946]" />
-                        <div className="flex justify-between font-semibold text-slate-800">
-                          <span>Tahap {r.tahap}</span>
-                          <span className="text-[10px] text-slate-400">
-                            {new Date(r.waktu).toLocaleTimeString('id-ID', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-[#E63946]" />
+                      <span>Catatan Waktu & Riwayat Perjalanan Tahap:</span>
+                    </p>
+                    <span className="text-[10px] text-slate-400">
+                      {workOrder.riwayat_tahap.length} update tercatat
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5 border-l-2 border-red-200 pl-3.5 ml-2">
+                    {workOrder.riwayat_tahap.map((r, i) => {
+                      const logDate = new Date(r.waktu);
+                      return (
+                        <div key={`timeline-${i}-${r.waktu || 't'}`} className="relative text-[11px] bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/70">
+                          <div className="absolute -left-[21px] top-3 w-2.5 h-2.5 rounded-full bg-[#E63946] ring-4 ring-white" />
+                          <div className="flex flex-wrap items-center justify-between gap-1 font-bold text-slate-800">
+                            <span className="bg-red-50 text-[#E63946] px-2 py-0.5 rounded-md border border-red-100">
+                              Tahap: {r.tahap}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {isNaN(logDate.getTime())
+                                ? r.waktu
+                                : logDate.toLocaleDateString('id-ID', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                  }) + ' WIB'}
+                            </span>
+                          </div>
+                          {r.catatan && (
+                            <p className="text-slate-700 text-xs mt-1.5 font-medium leading-relaxed">
+                              {r.catatan}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-400 mt-1 pt-1 border-t border-slate-200/50">
+                            <span>Diupdate oleh: <strong className="text-slate-600">{r.oleh}</strong></span>
+                            {r.vendor && (
+                              <span>Vendor: <strong className="text-slate-600">{r.vendor}</strong></span>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-slate-600 text-[10px]">{r.catatan}</p>
-                        <p className="text-[9px] text-slate-400">Oleh: {r.oleh}</p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -590,7 +823,7 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                     className="w-full py-3 px-4 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-[0_8px_20px_rgba(16,185,129,0.35)] flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Selesaikan & Tandai Pesanan Siap / Terkirim</span>
+                    <span>Selesaikan & Masukkan ke Arsip Selesai ✓</span>
                   </button>
                 ) : (
                   <button
@@ -604,15 +837,63 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
                   </button>
                 )
               ) : (
-                <div className="text-center py-2 px-3 bg-emerald-50 text-emerald-800 rounded-full font-bold text-xs border border-emerald-200">
-                  ✓ Work Order ini telah SELESAI diproduksi & dikirim.
+                <div className="text-center py-2.5 px-3 bg-emerald-50 text-emerald-800 rounded-full font-bold text-xs border border-emerald-300 flex items-center justify-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Pesanan ini telah SELESAI dan tersimpan di Arsip Selesai.</span>
                 </div>
               )}
             </div>
           </motion.div>
         </motion.div>
       )}
+
+      {/* Lightbox Fullscreen Image Zoom Modal */}
+      {zoomImage && (
+        <div
+          className="fixed inset-0 z-60 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setZoomImage(null)}
+        >
+          <div className="w-full max-w-4xl flex items-center justify-between text-white pb-3 px-2">
+            <div>
+              <h3 className="font-bold text-base">{zoomImage.title}</h3>
+              {zoomImage.subtitle && (
+                <p className="text-xs text-slate-400">{zoomImage.subtitle}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={zoomImage.url}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer"
+                title="Buka tab baru"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setZoomImage(null)}
+                className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer"
+                title="Tutup"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div
+            className="relative max-w-4xl max-h-[82vh] w-full flex items-center justify-center p-2 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={zoomImage.url}
+              alt={zoomImage.title}
+              className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl bg-slate-900/50"
+            />
+          </div>
+        </div>
+      )}
     </AnimatePresence>
   );
 };
-

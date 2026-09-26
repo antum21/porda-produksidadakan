@@ -76,7 +76,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNewOrder }) 
   // Breakdown stages in WorkOrders
   const stageCounts: Record<ProductionStage, number> = {
     Printing: workOrders.filter((w) => w.tahap_sekarang === 'Printing' && !w.completed_at).length,
-    Belanja: workOrders.filter((w) => w.tahap_sekarang === 'Belanja' && !w.completed_at).length,
+    Logistik: workOrders.filter((w) => (w.tahap_sekarang === 'Logistik' || w.tahap_sekarang === 'Belanja') && !w.completed_at).length,
+    Belanja: workOrders.filter((w) => (w.tahap_sekarang === 'Logistik' || w.tahap_sekarang === 'Belanja') && !w.completed_at).length,
     Produksi: workOrders.filter((w) => w.tahap_sekarang === 'Produksi' && !w.completed_at).length,
     Pengantaran: workOrders.filter((w) => w.tahap_sekarang === 'Pengantaran' && !w.completed_at).length,
   };
@@ -170,6 +171,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNewOrder }) 
                 <span className="text-[11px] text-slate-400 block">Total DP Diterima:</span>
                 <span className="font-bold text-base text-emerald-400">{formatRupiah(totalDpReceived)}</span>
               </div>
+            </div>
+
+            <div className="mt-3 pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => navigate('/finance')}
+                className="text-xs font-bold text-white/90 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <span>Buka Detail Manajemen Keuangan</span>
+                <ArrowRight className="w-3.5 h-3.5 text-[#E63946]" />
+              </button>
             </div>
           </div>
 

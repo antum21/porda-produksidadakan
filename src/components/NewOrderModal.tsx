@@ -783,6 +783,7 @@ export const NewOrderModal: React.FC<NewOrderModalProps> = ({ isOpen, onClose, o
                             <input
                               type="number"
                               min="0"
+                              step="any"
                               placeholder="0"
                               value={nominalDp === 0 ? '' : nominalDp}
                               onChange={(e) => setNominalDp(e.target.value === '' ? 0 : Number(e.target.value))}
@@ -1245,6 +1246,7 @@ export const NewOrderModal: React.FC<NewOrderModalProps> = ({ isOpen, onClose, o
                             <input
                               type="number"
                               min="0"
+                              step="any"
                               value={hargaSatuanGrafis}
                               onChange={(e) =>
                                 handleGrafisQuantityOrPriceChange(
@@ -1295,6 +1297,7 @@ export const NewOrderModal: React.FC<NewOrderModalProps> = ({ isOpen, onClose, o
                             <input
                               type="number"
                               min="0"
+                              step="any"
                               value={totalHarga}
                               onChange={(e) => setTotalHarga(Number(e.target.value))}
                               className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:border-[#E63946]"
@@ -1305,6 +1308,7 @@ export const NewOrderModal: React.FC<NewOrderModalProps> = ({ isOpen, onClose, o
                             <input
                               type="number"
                               min="0"
+                              step="any"
                               value={nominalDp}
                               onChange={(e) => setNominalDp(Number(e.target.value))}
                               className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-emerald-700 focus:outline-none focus:border-[#E63946]"

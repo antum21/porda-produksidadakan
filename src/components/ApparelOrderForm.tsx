@@ -1,6 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { ApparelDesignCard, ApparelOrderItemRow } from '../types';
+import { uploadOrderDesignImage, validateImageFile, deleteStorageFile } from '../services/storageService';
+import { extractImageFromClipboardEvent, readImageFromSystemClipboard } from '../utils/clipboardHelper';
 import { compressImageFile } from '../utils/imageCompressor';
+import { useToast } from '../context/ToastContext';
 import {
   Upload,
   Image as ImageIcon,
@@ -17,6 +20,9 @@ import {
   X,
   Sparkles,
   Loader2,
+  ClipboardPaste,
+  Check,
+  Command,
 } from 'lucide-react';
 
 export const SABLON_PRESETS: { id: string; nama: string; harga: number }[] = [
@@ -28,7 +34,7 @@ export const SABLON_PRESETS: { id: string; nama: string; harga: number }[] = [
 ];
 
 export const createDefaultItemRow = (): ApparelOrderItemRow => ({
-  id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 9)}-${Math.random().toString(36).slice(2, 6)}`,
   jenis_pesanan: '',
   harga_satuan: 0,
   sizes: {
@@ -45,7 +51,7 @@ export const createDefaultItemRow = (): ApparelOrderItemRow => ({
 });
 
 export const createDefaultDesignCard = (index: number): ApparelDesignCard => ({
-  id: `desain-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  id: `desain-${Date.now()}-${Math.random().toString(36).slice(2, 9)}-${Math.random().toString(36).slice(2, 6)}`,
   nama_desain: '',
   gambar_preview: '',
   file_name: '',
@@ -91,9 +97,23 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
   designs,
   setDesigns,
 }) => {
+  const { success: toastSuccess, error: toastError, info: toastInfo, warning: toastWarning } = useToast();
   // Temporary state for the sablon dropdown per item
   const [selectedSablonByItem, setSelectedSablonByItem] = useState<{ [itemId: string]: string }>({});
-  const [compressingDesignId, setCompressingDesignId] = useState<string | null>(null);
+  // Uploading state per design card for non-blocking background sync
+  const [uploadingDesignIds, setUploadingDesignIds] = useState<{ [designId: string]: boolean }>({});
+  const [isPastingDesignId, setIsPastingDesignId] = useState<string | null>(null);
+  const [activeDesignId, setActiveDesignId] = useState<string>(designs[0]?.id || '');
+  const lastPasteTimeRef = useRef<number>(0);
+
+  // Keep activeDesignId synced with existing designs
+  useEffect(() => {
+    if (!activeDesignId && designs.length > 0) {
+      setActiveDesignId(designs[0].id);
+    } else if (activeDesignId && !designs.some((d) => d.id === activeDesignId)) {
+      setActiveDesignId(designs[0]?.id || '');
+    }
+  }, [designs, activeDesignId]);
 
   const formatRupiah = (num: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -114,33 +134,166 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
     setDesigns((prev) => prev.filter((d) => d.id !== designId));
   };
 
-  // Handle Image Upload for a Design with auto-compression (< 80KB)
+  // Handle Image Upload for a Design:
+  // 1. Instant Optimistic Preview (< 20ms) using compressed base64 so image is immediately visible and safe to store
+  // 2. Background async upload to Firebase Storage with status badge
   const handleImageFileChange = async (designId: string, file: File | null) => {
     if (!file) return;
-    setCompressingDesignId(designId);
+
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      toastError('Format/Ukuran Tidak Didukung', validation.error || 'Format atau ukuran file tidak didukung.');
+      return;
+    }
+
+    // 1. INSTANT OPTIMISTIC PREVIEW
+    // Produce an immediate, permanent base64 data URL (< 50KB) so the image is valid right away
     try {
-      const compressedBase64 = await compressImageFile(file, 800, 0.72);
+      const instantBase64 = await compressImageFile(file, 800, 0.72);
       setDesigns((prev) =>
-        prev.map((d) => (d.id === designId ? { ...d, gambar_preview: compressedBase64, file_name: file.name } : d))
+        prev.map((d) =>
+          d.id === designId
+            ? {
+                ...d,
+                gambar_preview: instantBase64,
+                file_name: file.name || 'Pasted Image',
+              }
+            : d
+        )
       );
-    } catch (err) {
-      console.warn('Image compression fallback:', err);
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result as string;
-        setDesigns((prev) =>
-          prev.map((d) => (d.id === designId ? { ...d, gambar_preview: base64, file_name: file.name } : d))
-        );
-      };
-      reader.readAsDataURL(file);
+    } catch {
+      const instantLocalUrl = URL.createObjectURL(file);
+      setDesigns((prev) =>
+        prev.map((d) =>
+          d.id === designId
+            ? {
+                ...d,
+                gambar_preview: instantLocalUrl,
+                file_name: file.name || 'Pasted Image',
+              }
+            : d
+        )
+      );
+    }
+
+    // 2. BACKGROUND ASYNC UPLOAD TO FIREBASE STORAGE (OR FALLBACK)
+    setUploadingDesignIds((prev) => ({ ...prev, [designId]: true }));
+    try {
+      const uploadRes = await uploadOrderDesignImage('draft-order', file, 'Staff');
+      setDesigns((prev) =>
+        prev.map((d) =>
+          d.id === designId
+            ? {
+                ...d,
+                gambar_preview: uploadRes.downloadUrl,
+                storage_path: uploadRes.storagePath || d.storage_path,
+                file_name: uploadRes.fileName || d.file_name,
+                file_size: uploadRes.fileSize || d.file_size,
+                content_type: uploadRes.contentType || d.content_type,
+                uploaded_at: uploadRes.uploadedAt,
+              }
+            : d
+        )
+      );
+    } catch (err: any) {
+      console.warn('Storage sync note:', err);
     } finally {
-      setCompressingDesignId(null);
+      setUploadingDesignIds((prev) => ({ ...prev, [designId]: false }));
+      setIsPastingDesignId(null);
     }
   };
 
+  // Dedicated Paste Handler for Dropzone Container
+  const handleDropzonePaste = async (e: React.ClipboardEvent, designId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Debounce duplicate events
+    if (Date.now() - lastPasteTimeRef.current < 400) return;
+    lastPasteTimeRef.current = Date.now();
+
+    const file = await extractImageFromClipboardEvent(e);
+    if (file) {
+      await handleImageFileChange(designId, file);
+      toastSuccess('Gambar Ditempel!', 'Gambar dari clipboard langsung ditampilkan.');
+    }
+  };
+
+  // Button click handler to read directly from system clipboard
+  const handlePasteButtonClick = async (designId: string) => {
+    setIsPastingDesignId(designId);
+    try {
+      const res = await readImageFromSystemClipboard();
+      if (res.file) {
+        await handleImageFileChange(designId, res.file);
+        toastSuccess('Gambar Ditempel!', 'Gambar dari clipboard langsung ditampilkan.');
+      } else {
+        if (res.isPermissionDenied) {
+          toastInfo(
+            'Gunakan Shortcut Ctrl + V',
+            'Izin akses clipboard browser dibatasi. Silakan tekan tombol keyboard Ctrl + V (atau Cmd + V) untuk menempelkan gambar.'
+          );
+        } else {
+          toastWarning(
+            'Clipboard Belum Ada Gambar',
+            res.error || 'Salin gambar terlebih dahulu (Screenshot / Copy Image) lalu tekan Ctrl + V.'
+          );
+        }
+      }
+    } catch (err: any) {
+      toastInfo('Gunakan Shortcut Ctrl + V', 'Tekan tombol Ctrl + V pada keyboard untuk menempelkan gambar secara instan.');
+    } finally {
+      setIsPastingDesignId(null);
+    }
+  };
+
+  // Global window paste listener for instantaneous Ctrl+V anywhere in order form
+  useEffect(() => {
+    const handleGlobalPaste = async (e: ClipboardEvent) => {
+      // Check if clipboard contains an image file
+      const file = await extractImageFromClipboardEvent(e);
+      if (!file) {
+        // Normal text paste, allow default browser behavior
+        return;
+      }
+
+      // If clipboard HAS an image file, intercept paste even if an input was focused
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Debounce duplicate events
+      if (Date.now() - lastPasteTimeRef.current < 400) return;
+      lastPasteTimeRef.current = Date.now();
+
+      const targetId = activeDesignId || designs[0]?.id;
+      if (!targetId) return;
+
+      await handleImageFileChange(targetId, file);
+      toastSuccess('Gambar Ditempel!', 'Gambar dari clipboard langsung ditampilkan.');
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => {
+      window.removeEventListener('paste', handleGlobalPaste);
+    };
+  }, [activeDesignId, designs]);
+
   const handleRemoveImage = (designId: string) => {
     setDesigns((prev) =>
-      prev.map((d) => (d.id === designId ? { ...d, gambar_preview: '', file_name: '' } : d))
+      prev.map((d) => {
+        if (d.id === designId) {
+          if (d.storage_path) {
+            deleteStorageFile(d.storage_path).catch(() => {});
+          }
+          return {
+            ...d,
+            gambar_preview: '',
+            storage_path: '',
+            file_name: '',
+          };
+        }
+        return d;
+      })
     );
   };
 
@@ -249,7 +402,7 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                   sablon_list: [
                     ...item.sablon_list,
                     {
-                      id: `${foundPreset.id}-${Date.now()}`,
+                      id: `${foundPreset.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                       nama: foundPreset.nama,
                       harga: foundPreset.harga,
                     },
@@ -444,7 +597,7 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
       <div className="space-y-6">
         {designs.map((design, dIdx) => (
           <div
-            key={design.id}
+            key={design.id ? `${design.id}-${dIdx}` : `desain-${dIdx}`}
             className="bg-white border-2 border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs relative transition-all"
           >
             {/* Header Card Desain */}
@@ -480,8 +633,11 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
 
             {/* Layout 2 Kolom: Sisi Kiri (Upload) & Sisi Kanan (Form List Ukuran) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-              {/* SISI KIRI: Upload File Gambar */}
+              {/* SISI KIRI: Upload & Paste File Gambar */}
               <div
+                tabIndex={0}
+                onFocus={() => setActiveDesignId(design.id)}
+                onClick={() => setActiveDesignId(design.id)}
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -492,22 +648,35 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                   const file = e.dataTransfer.files?.[0];
                   if (file) handleImageFileChange(design.id, file);
                 }}
-                className="lg:col-span-4 bg-slate-50 border-2 border-dashed border-slate-300 hover:border-[#E63946] rounded-2xl p-4 text-center flex flex-col items-center justify-center min-h-[260px] relative overflow-hidden group transition-colors"
+                onPaste={(e) => handleDropzonePaste(e, design.id)}
+                className={`lg:col-span-4 rounded-2xl p-4 text-center flex flex-col items-center justify-center min-h-[270px] relative overflow-hidden transition-all outline-none ${
+                  activeDesignId === design.id
+                    ? 'bg-red-50/30 border-2 border-dashed border-[#E63946] shadow-sm ring-2 ring-red-100'
+                    : 'bg-slate-50 border-2 border-dashed border-slate-300 hover:border-[#E63946]'
+                }`}
               >
-                {compressingDesignId === design.id ? (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <Loader2 className="w-8 h-8 text-[#E63946] animate-spin mb-2" />
-                    <p className="text-xs font-bold text-slate-800">Mengompresi Gambar...</p>
-                    <p className="text-[10px] text-slate-500">Menyesuaikan resolusi untuk database</p>
-                  </div>
-                ) : design.gambar_preview ? (
+                {design.gambar_preview ? (
                   <div className="w-full flex flex-col items-center">
-                    <div className="relative w-full max-h-[220px] overflow-hidden rounded-xl bg-white border border-slate-200 shadow-xs mb-2">
+                    <div className="relative w-full max-h-[220px] overflow-hidden rounded-xl bg-white border border-slate-200 shadow-xs mb-2 group">
                       <img
                         src={design.gambar_preview}
                         alt="Preview Desain"
                         className="w-full h-auto max-h-[220px] object-contain mx-auto"
                       />
+
+                      {/* Cloud Sync Status Indicator */}
+                      {uploadingDesignIds[design.id] ? (
+                        <div className="absolute top-2 left-2 bg-slate-900/80 backdrop-blur-xs text-amber-300 text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                          <span>Menyimpan ke Cloud...</span>
+                        </div>
+                      ) : design.storage_path ? (
+                        <div className="absolute top-2 left-2 bg-emerald-600/90 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                          <Check className="w-2.5 h-2.5" />
+                          <span>Tersimpan di Cloud</span>
+                        </div>
+                      ) : null}
+
                       <button
                         type="button"
                         onClick={() => handleRemoveImage(design.id)}
@@ -517,39 +686,98 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <span className="text-[11px] font-medium text-slate-600 truncate max-w-[200px] mb-2">
+
+                    <span className="text-[11px] font-medium text-slate-600 truncate max-w-[220px] mb-2.5">
                       {design.file_name || 'Artwork Desain'}
                     </span>
-                    <label className="cursor-pointer text-[11px] font-bold text-[#E63946] hover:underline flex items-center gap-1">
-                      <Upload className="w-3 h-3" />
-                      Ganti Gambar
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handleImageFileChange(design.id, e.target.files?.[0] || null)}
-                      />
-                    </label>
+
+                    {/* Action buttons for existing image */}
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer text-[11px] font-bold text-slate-700 hover:text-[#E63946] bg-white border border-slate-200 hover:border-red-200 px-2.5 py-1.5 rounded-xl shadow-2xs transition-all flex items-center gap-1 active:scale-95">
+                        <Upload className="w-3 h-3 text-[#E63946]" />
+                        <span>Ganti File</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageFileChange(design.id, e.target.files?.[0] || null)}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => handlePasteButtonClick(design.id)}
+                        className="cursor-pointer text-[11px] font-bold text-slate-700 hover:text-[#E63946] bg-white border border-slate-200 hover:border-red-200 px-2.5 py-1.5 rounded-xl shadow-2xs transition-all flex items-center gap-1 active:scale-95"
+                        title="Tempel gambar baru dari clipboard (Ctrl+V)"
+                      >
+                        <ClipboardPaste className="w-3 h-3 text-[#E63946]" />
+                        <span>Paste Baru</span>
+                      </button>
+                    </div>
+
+                    <p className="text-[9px] text-slate-400 mt-2 flex items-center gap-1">
+                      <span>Bisa langsung tekan</span>
+                      <kbd className="px-1 py-0.2 bg-slate-200 text-slate-700 rounded font-mono font-bold">
+                        Ctrl+V
+                      </kbd>
+                      <span>untuk menimpa</span>
+                    </p>
+                  </div>
+                ) : isPastingDesignId === design.id ? (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <Loader2 className="w-7 h-7 text-[#E63946] animate-spin mb-2" />
+                    <p className="text-xs font-bold text-slate-800">Membaca Clipboard...</p>
+                    <p className="text-[10px] text-slate-500">Menyiapkan gambar desain</p>
                   </div>
                 ) : (
-                  <label className="cursor-pointer w-full h-full flex flex-col items-center justify-center py-6 px-2">
-                    <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-center text-slate-400 group-hover:text-[#E63946] group-hover:border-red-200 transition-all mb-3">
-                      <Upload className="w-6 h-6" />
+                  <div className="w-full h-full flex flex-col items-center justify-center py-4 px-2">
+                    <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-center text-slate-400 group-hover:text-[#E63946] group-hover:border-red-200 transition-all mb-2.5 relative">
+                      <Upload className="w-5 h-5 text-slate-500" />
+                      <div className="absolute -bottom-1 -right-1 bg-red-50 border border-red-200 text-[#E63946] rounded-md p-0.5 shadow-2xs">
+                        <ClipboardPaste className="w-3 h-3" />
+                      </div>
                     </div>
-                    <p className="text-xs font-bold text-slate-800 mb-1">
-                      Masukkan Gambar
+
+                    <p className="text-xs font-bold text-slate-800 mb-0.5">
+                      Unggah / Tempel Gambar Desain
                     </p>
-                    <p className="text-[11px] text-slate-500 mb-3">(Klik atau Tarik File ke Sini)</p>
-                    <span className="text-[10px] font-bold bg-white text-slate-600 px-3 py-1.5 rounded-xl border border-slate-200 group-hover:bg-[#E63946] group-hover:text-white group-hover:border-[#E63946] transition-all">
-                      Pilih dari Komputer
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => handleImageFileChange(design.id, e.target.files?.[0] || null)}
-                    />
-                  </label>
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      Pilih file, seret ke sini, atau gunakan shortcut
+                    </p>
+
+                    {/* Visual Shortcut Key Badge */}
+                    <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 text-[#E63946] border border-red-100 rounded-lg text-[10px] font-bold mb-3 shadow-2xs">
+                      <ClipboardPaste className="w-3 h-3" />
+                      <span>Tempel Langsung:</span>
+                      <kbd className="px-1 py-0.5 bg-white border border-red-200 rounded text-[9px] font-mono font-bold shadow-2xs">
+                        Ctrl + V
+                      </kbd>
+                    </div>
+
+                    {/* Dual Action Buttons: File Picker & Paste Button */}
+                    <div className="flex flex-wrap items-center justify-center gap-2 w-full max-w-[270px]">
+                      <label className="cursor-pointer flex-1 inline-flex items-center justify-center gap-1.5 text-[11px] font-bold bg-white text-slate-700 hover:text-[#E63946] hover:border-red-200 px-3 py-2 rounded-xl border border-slate-200 shadow-2xs transition-all active:scale-95">
+                        <Upload className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Pilih File</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageFileChange(design.id, e.target.files?.[0] || null)}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => handlePasteButtonClick(design.id)}
+                        className="cursor-pointer flex-1 inline-flex items-center justify-center gap-1.5 text-[11px] font-bold bg-[#E63946] hover:bg-red-700 text-white px-3 py-2 rounded-xl shadow-xs transition-all active:scale-95"
+                        title="Tempel gambar dari clipboard (Ctrl+V)"
+                      >
+                        <ClipboardPaste className="w-3.5 h-3.5" />
+                        <span>Paste Gambar</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -576,7 +804,7 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
 
                   return (
                     <div
-                      key={item.id}
+                      key={item.id ? `${item.id}-${iIdx}` : `item-${iIdx}`}
                       className="bg-slate-50/80 border border-slate-200 rounded-2xl p-3.5 sm:p-4 space-y-3 relative hover:border-slate-300 transition-all"
                     >
                       {/* Top Bar of List Ukuran Card */}
@@ -626,7 +854,7 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                             <input
                               type="number"
                               min="0"
-                              step="500"
+                              step="any"
                               placeholder="0"
                               value={item.harga_satuan === 0 ? '' : item.harga_satuan}
                               onChange={(e) =>
@@ -649,8 +877,8 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                           Rincian Jumlah Ukuran (Pcs):
                         </span>
                         <div className="grid grid-cols-7 gap-1.5 sm:gap-2 text-center">
-                          {(['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'] as const).map((sz) => (
-                            <div key={sz} className="flex flex-col items-center">
+                          {(['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'] as const).map((sz, szIdx) => (
+                            <div key={`sz-${design.id || dIdx}-${item.id || iIdx}-${sz}-${szIdx}`} className="flex flex-col items-center">
                               <span className="text-[11px] font-bold text-slate-700 mb-1">{sz}</span>
                               <input
                                 type="number"
@@ -710,9 +938,9 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                             {/* Badges Sablon yang telah ditambahkan */}
                             {item.sablon_list.length > 0 ? (
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {item.sablon_list.map((sab) => (
+                                {item.sablon_list.map((sab, sIdx) => (
                                   <span
-                                    key={sab.id}
+                                    key={sab.id ? `${sab.id}-${sIdx}` : `sab-${sIdx}`}
                                     className="inline-flex items-center gap-1 text-[10px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs"
                                   >
                                     {sab.nama}
@@ -745,7 +973,7 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                               <input
                                 type="number"
                                 min="0"
-                                step="1000"
+                                step="any"
                                 placeholder="0"
                                 value={item.diskon_sablon === 0 ? '' : item.diskon_sablon}
                                 onChange={(e) =>

@@ -1,1 +1,1 @@
-export { auth, db, default } from './firebase.ts';
+export { db, storage, default } from './firebase.ts';

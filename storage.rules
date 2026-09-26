@@ -1,0 +1,45 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isImageFile() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp)')
+        && request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // Orders design storage
+    // orders/{orderId}/designs/{fileName}
+    match /orders/{orderId}/designs/{fileName} {
+      // Must be authenticated to view order designs
+      allow read: if isAuthenticated();
+      
+      // Must be authenticated, valid image, max 10MB to upload
+      allow create: if isAuthenticated() && isImageFile();
+      
+      // Update/overwrite is denied to prevent file tampering; uploads create unique names
+      allow update: if false;
+
+      // Authenticated users can delete design files if part of order management
+      allow delete: if isAuthenticated();
+    }
+
+    // Production photos / proofs
+    // production/{workOrderId}/{fileName}
+    match /production/{workOrderId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isImageFile();
+      allow update: if false;
+      allow delete: if isAuthenticated();
+    }
+
+    // Fallback: Deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

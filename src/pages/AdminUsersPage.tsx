@@ -37,6 +37,13 @@ const ROLE_INFO: Record<
   UserRole,
   { label: string; icon: React.ElementType; color: string; badgeColor: string; desc: string }
 > = {
+  super_admin: {
+    label: 'Super Admin',
+    icon: ShieldCheck,
+    color: 'bg-red-50 text-[#E63946] border-red-200',
+    badgeColor: 'bg-red-50 text-[#E63946] border-red-100',
+    desc: 'Pemilik workshop & kontrol sistem penuh',
+  },
   Admin: {
     label: 'Super Admin',
     icon: ShieldCheck,
@@ -84,8 +91,8 @@ const ROLE_INFO: Record<
 const ALL_ROLES: UserRole[] = ['Admin', 'Printing', 'Logistik', 'Produksi', 'Pengantaran', 'Keuangan'];
 
 export const AdminUsersPage: React.FC = () => {
-  const { role, isSuperAdmin, switchRole } = useAuth();
-  const { success, error: toastError, info } = useToast();
+  const { isSuperAdmin } = useAuth();
+  const { success, error: toastError } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,21 +101,24 @@ export const AdminUsersPage: React.FC = () => {
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isResetPassModalOpen, setIsResetPassModalOpen] = useState(false);
+  const [isChangeAdminPassModalOpen, setIsChangeAdminPassModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
 
-  // Form states for Add User
+  // Form states for Add User (Staff Profile)
   const [formData, setFormData] = useState({
     username: '',
     nama: '',
     role: 'Printing' as UserRole,
-    password: '',
     phone: '',
     email: '',
   });
+
+  // Form states for Super Admin Password Change
+  const [currentPass, setCurrentPass] = useState('');
+  const [newAdminPass, setNewAdminPass] = useState('');
+  const [confirmAdminPass, setConfirmAdminPass] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -118,7 +128,7 @@ export const AdminUsersPage: React.FC = () => {
       if (e.key === 'Escape') {
         setIsAddModalOpen(false);
         setIsEditModalOpen(false);
-        setIsResetPassModalOpen(false);
+        setIsChangeAdminPassModalOpen(false);
         setIsDeleteModalOpen(false);
       }
     };
@@ -151,17 +161,8 @@ export const AdminUsersPage: React.FC = () => {
         </h2>
         <p className="text-sm text-slate-500 max-w-md mt-2">
           Halaman pembuatan dan manajemen akun pengguna hanya dapat diakses oleh akun dengan role{' '}
-          <strong className="text-slate-800">Super Admin (Admin)</strong>.
+          <strong className="text-slate-800">Super Admin</strong>.
         </p>
-        <div className="mt-6 flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={() => switchRole('Admin')}
-            className="py-2.5 px-5 rounded-full bg-[#E63946] hover:bg-red-600 active:scale-95 text-white font-bold text-xs shadow-md shadow-red-500/30 flex items-center justify-center gap-2 cursor-pointer transition-all"
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Beralih ke Super Admin (Mode Demo)</span>
-          </button>
-        </div>
       </div>
     );
   }
@@ -193,15 +194,11 @@ export const AdminUsersPage: React.FC = () => {
       if (!formData.nama.trim()) {
         throw new Error('Nama lengkap staf wajib diisi.');
       }
-      if (!formData.password || formData.password.length < 4) {
-        throw new Error('Kata sandi minimal 4 karakter.');
-      }
 
       await createUserByAdmin({
         username: formData.username,
         nama: formData.nama,
         role: formData.role,
-        password: formData.password,
         phone: formData.phone,
         email: formData.email,
       });
@@ -211,13 +208,12 @@ export const AdminUsersPage: React.FC = () => {
         username: '',
         nama: '',
         role: 'Printing',
-        password: '',
         phone: '',
         email: '',
       });
-      showToast('Akun pengguna baru berhasil dibuat!');
+      showToast('Akun profil staf baru berhasil dibuat!');
     } catch (err: any) {
-      setFormError(err.message || 'Gagal membuat akun.');
+      setFormError(err.message || 'Gagal membuat profil staf.');
     } finally {
       setSubmitting(false);
     }
@@ -245,24 +241,46 @@ export const AdminUsersPage: React.FC = () => {
     }
   };
 
-  const handleResetPassword = async (e: React.FormEvent) => {
+  const handleChangeAdminPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser) return;
     setFormError(null);
-    setSubmitting(true);
 
+    if (newAdminPass !== confirmAdminPass) {
+      setFormError('Konfirmasi kata sandi baru tidak cocok.');
+      return;
+    }
+    if (newAdminPass.length < 6) {
+      setFormError('Kata sandi baru minimal harus 6 karakter.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      if (!newPassword || newPassword.length < 4) {
-        throw new Error('Password baru minimal 4 karakter.');
-      }
-      await updateUserByAdmin(selectedUser.uid, {
-        password: newPassword,
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          currentPassword: currentPass,
+          newPassword: newAdminPass,
+        }),
       });
-      setIsResetPassModalOpen(false);
-      setNewPassword('');
-      showToast(`Password untuk @${selectedUser.username} berhasil direset!`);
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal mengubah kata sandi.');
+      }
+
+      setIsChangeAdminPassModalOpen(false);
+      setCurrentPass('');
+      setNewAdminPass('');
+      setConfirmAdminPass('');
+      showToast('Kata sandi Super Admin berhasil diperbarui!');
     } catch (err: any) {
-      setFormError(err.message || 'Gagal mereset password.');
+      setFormError(err.message || 'Gagal memperbarui kata sandi.');
     } finally {
       setSubmitting(false);
     }
@@ -305,21 +323,38 @@ export const AdminUsersPage: React.FC = () => {
             Manajemen Pengguna & Staf
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Kelola pembuatan akun karyawan workshop, hak akses divisi, dan reset kata sandi.
+            Kelola data staf workshop, divisi kerja, dan keamanan kata sandi Super Admin.
           </p>
         </div>
 
-        <button
-          id="btn-add-new-user"
-          onClick={() => {
-            setFormError(null);
-            setIsAddModalOpen(true);
-          }}
-          className="py-3 px-5 rounded-2xl bg-[#E63946] hover:bg-red-600 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-red-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Tambah Pengguna Baru</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setFormError(null);
+              setCurrentPass('');
+              setNewAdminPass('');
+              setConfirmAdminPass('');
+              setIsChangeAdminPassModalOpen(true);
+            }}
+            className="py-3 px-4 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs sm:text-sm shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
+            title="Ubah Kata Sandi Super Admin"
+          >
+            <KeyRound className="w-4 h-4 text-amber-500" />
+            <span>Ubah Password Admin</span>
+          </button>
+
+          <button
+            id="btn-add-new-user"
+            onClick={() => {
+              setFormError(null);
+              setIsAddModalOpen(true);
+            }}
+            className="py-3 px-5 rounded-2xl bg-[#E63946] hover:bg-red-600 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-red-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Tambah Staf Baru</span>
+          </button>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -439,13 +474,13 @@ export const AdminUsersPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredUsers.map((u) => {
+                {filteredUsers.map((u, uIdx) => {
                   const roleConfig = ROLE_INFO[u.role] || ROLE_INFO.Admin;
                   const RoleIcon = roleConfig.icon;
                   const isInactive = u.status === 'inactive';
 
                   return (
-                    <tr key={u.uid} className={`hover:bg-slate-50/80 transition-colors ${isInactive ? 'opacity-60 bg-slate-50/50' : ''}`}>
+                    <tr key={u.uid ? `${u.uid}-${uIdx}` : `user-${uIdx}`} className={`hover:bg-slate-50/80 transition-colors ${isInactive ? 'opacity-60 bg-slate-50/50' : ''}`}>
                       <td className="py-4 px-4 sm:px-6">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0 overflow-hidden">
@@ -471,12 +506,6 @@ export const AdminUsersPage: React.FC = () => {
                         <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-800 px-2.5 py-1 rounded-lg font-mono text-xs font-bold border border-slate-200/70">
                           <span>@{u.username}</span>
                         </div>
-                        {u.password && (
-                          <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
-                            <KeyRound className="w-3 h-3 text-amber-500" />
-                            <span>Pass: ••••••••</span>
-                          </div>
-                        )}
                       </td>
 
                       <td className="py-4 px-4">
@@ -523,20 +552,6 @@ export const AdminUsersPage: React.FC = () => {
 
                       <td className="py-4 px-4 sm:px-6 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Reset Password Button */}
-                          <button
-                            onClick={() => {
-                              setSelectedUser(u);
-                              setNewPassword('');
-                              setFormError(null);
-                              setIsResetPassModalOpen(true);
-                            }}
-                            className="p-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-all cursor-pointer"
-                            title="Reset Kata Sandi"
-                          >
-                            <KeyRound className="w-3.5 h-3.5" />
-                          </button>
-
                           {/* Edit User Button */}
                           <button
                             onClick={() => {
@@ -545,13 +560,13 @@ export const AdminUsersPage: React.FC = () => {
                               setIsEditModalOpen(true);
                             }}
                             className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
-                            title="Edit Data Karyawan"
+                            title="Edit Data Staf"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Delete User Button */}
-                          {u.username !== 'admin' && (
+                          {u.username.toLowerCase() !== 'admin123' && u.username.toLowerCase() !== 'admin' && (
                             <button
                               onClick={() => {
                                 setSelectedUser(u);
@@ -653,28 +668,6 @@ export const AdminUsersPage: React.FC = () => {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Kata Sandi (Password) <span className="text-[#E63946]">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Minimal 4 karakter"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full bg-[#F8F5F2] border border-slate-200 rounded-full pl-4 pr-10 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#E63946]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -818,8 +811,8 @@ export const AdminUsersPage: React.FC = () => {
         </div>
       )}
 
-      {/* ================= MODAL: RESET PASSWORD ================= */}
-      {isResetPassModalOpen && selectedUser && (
+      {/* ================= MODAL: UBAH PASSWORD SUPER ADMIN ================= */}
+      {isChangeAdminPassModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -828,12 +821,12 @@ export const AdminUsersPage: React.FC = () => {
                   <KeyRound className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-slate-900">Reset Kata Sandi</h3>
-                  <p className="text-xs text-slate-500">Untuk @{selectedUser.username}</p>
+                  <h3 className="font-bold text-base text-slate-900">Ubah Password Admin</h3>
+                  <p className="text-xs text-slate-500">Akun Super Admin (Admin123)</p>
                 </div>
               </div>
               <button
-                onClick={() => setIsResetPassModalOpen(false)}
+                onClick={() => setIsChangeAdminPassModalOpen(false)}
                 className="w-7 h-7 rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
                 ✕
@@ -847,18 +840,18 @@ export const AdminUsersPage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleResetPassword} className="mt-4 space-y-3.5">
+            <form onSubmit={handleChangeAdminPassword} className="mt-4 space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Kata Sandi Baru
+                  Kata Sandi Saat Ini
                 </label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
-                    placeholder="Minimal 4 karakter"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Masukkan kata sandi lama"
+                    value={currentPass}
+                    onChange={(e) => setCurrentPass(e.target.value)}
                     className="w-full bg-[#F8F5F2] border border-slate-200 rounded-full pl-4 pr-10 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#E63946]"
                   />
                   <button
@@ -871,10 +864,38 @@ export const AdminUsersPage: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Kata Sandi Baru
+                </label>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="Minimal 6 karakter"
+                  value={newAdminPass}
+                  onChange={(e) => setNewAdminPass(e.target.value)}
+                  className="w-full bg-[#F8F5F2] border border-slate-200 rounded-full px-4 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#E63946]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Konfirmasi Kata Sandi Baru
+                </label>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="Ulangi kata sandi baru"
+                  value={confirmAdminPass}
+                  onChange={(e) => setConfirmAdminPass(e.target.value)}
+                  className="w-full bg-[#F8F5F2] border border-slate-200 rounded-full px-4 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#E63946]"
+                />
+              </div>
+
               <div className="pt-3 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsResetPassModalOpen(false)}
+                  onClick={() => setIsChangeAdminPassModalOpen(false)}
                   className="py-2.5 px-4 rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs cursor-pointer"
                 >
                   Batal
@@ -882,9 +903,9 @@ export const AdminUsersPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="py-2.5 px-6 rounded-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold text-xs shadow-md shadow-amber-500/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="py-2.5 px-6 rounded-full bg-[#E63946] hover:bg-red-600 active:scale-95 text-white font-bold text-xs shadow-md shadow-red-500/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  {submitting ? 'Mereset...' : 'Simpan Password Baru'}
+                  {submitting ? 'Menyimpan...' : 'Perbarui Password'}
                 </button>
               </div>
             </form>

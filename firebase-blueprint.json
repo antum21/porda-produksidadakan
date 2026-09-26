@@ -1,0 +1,210 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil akun pengguna dan staf sistem ERP Porda",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "nama": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "Admin", "Keuangan", "Printing", "Logistik", "Produksi", "Pengantaran"] },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "username", "nama", "role"]
+    },
+    "OrderItem": {
+      "title": "OrderItem",
+      "description": "Data pesanan konveksi apparel, grafis, atau custom order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoice_no": { "type": "string" },
+        "nama_klien": { "type": "string" },
+        "total_harga": { "type": "number" },
+        "nominal_dp": { "type": "number" },
+        "status": { "type": "string", "enum": ["Menunggu Pembayaran", "Diproses", "Selesai"] },
+        "deadline": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "nama_klien", "total_harga", "nominal_dp", "status", "deadline"]
+    },
+    "WorkOrder": {
+      "title": "WorkOrder",
+      "description": "Surat Perintah Kerja (SPK) untuk pengerjaan di workshop produksi",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "order_id": { "type": "string" },
+        "tahap_sekarang": { "type": "string", "enum": ["Printing", "Belanja", "Produksi", "Pengantaran"] },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "order_id", "tahap_sekarang"]
+    },
+    "MaterialStock": {
+      "title": "MaterialStock",
+      "description": "Data stok bahan mentah konveksi, kain, DTF, dan percetakan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nama_bahan": { "type": "string" },
+        "kategori": { "type": "string" },
+        "stok": { "type": "number" },
+        "satuan": { "type": "string" },
+        "harga_modal": { "type": "number" },
+        "stok_minimum": { "type": "number" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "nama_bahan", "stok", "satuan", "harga_modal", "stok_minimum"]
+    },
+    "MaterialPurchase": {
+      "title": "MaterialPurchase",
+      "description": "Pencatatan faktur pembelian bahan baku dari supplier",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nomor_pembelian": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "supplier": { "type": "string" },
+        "nama_bahan": { "type": "string" },
+        "qty": { "type": "number" },
+        "satuan": { "type": "string" },
+        "harga_satuan": { "type": "number" },
+        "total": { "type": "number" },
+        "status_pembayaran": { "type": "string", "enum": ["Lunas", "Belum Lunas", "DP / Sebagian"] },
+        "jumlah_dibayar": { "type": "number" },
+        "sisa_hutang": { "type": "number" },
+        "metode_pembayaran": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "nomor_pembelian", "tanggal", "supplier", "nama_bahan", "qty", "harga_satuan", "total"]
+    },
+    "MaterialUsage": {
+      "title": "MaterialUsage",
+      "description": "Pencatatan pemakaian bahan untuk pesanan tertentu yang mengurangi stok dan menambah HPP",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "order_id": { "type": "string" },
+        "invoice_no": { "type": "string" },
+        "nama_bahan": { "type": "string" },
+        "qty": { "type": "number" },
+        "satuan": { "type": "string" },
+        "harga_modal_satuan": { "type": "number" },
+        "total_biaya": { "type": "number" },
+        "tanggal": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "order_id", "nama_bahan", "qty", "total_biaya", "tanggal"]
+    },
+    "OrderProductionCost": {
+      "title": "OrderProductionCost",
+      "description": "Biaya produksi atau vendor langsung (maklon jahit, bordir, dll) per order yang masuk ke HPP",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "order_id": { "type": "string" },
+        "invoice_no": { "type": "string" },
+        "jenis_biaya": { "type": "string" },
+        "deskripsi": { "type": "string" },
+        "biaya": { "type": "number" },
+        "tanggal": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "order_id", "jenis_biaya", "biaya", "tanggal"]
+    },
+    "OperationalExpense": {
+      "title": "OperationalExpense",
+      "description": "Biaya operasional umum (listrik, sewa, internet, maintenance, transportasi, atk) untuk perhitungan laba bersih",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nomor_transaksi": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "kategori": { "type": "string" },
+        "deskripsi": { "type": "string" },
+        "nominal": { "type": "number" },
+        "metode_pembayaran": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "tanggal", "kategori", "deskripsi", "nominal"]
+    },
+    "CustomerPayment": {
+      "title": "CustomerPayment",
+      "description": "Riwayat transaksi pembayaran DP, cicilan, atau pelunasan dari pelanggan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "order_id": { "type": "string" },
+        "invoice_no": { "type": "string" },
+        "nama_klien": { "type": "string" },
+        "jenis_pembayaran": { "type": "string" },
+        "nominal": { "type": "number" },
+        "metode_pembayaran": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "order_id", "nominal", "tanggal"]
+    },
+    "SupplierPayment": {
+      "title": "SupplierPayment",
+      "description": "Riwayat pembayaran cicilan atau pelunasan hutang pembelian bahan ke supplier",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "purchase_id": { "type": "string" },
+        "nomor_pembelian": { "type": "string" },
+        "supplier": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "nominal": { "type": "number" },
+        "metode_pembayaran": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "purchase_id", "nominal", "tanggal"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Daftar pengguna dan staf sistem ERP Porda"
+    },
+    "/orders/{orderId}": {
+      "schema": "OrderItem",
+      "description": "Daftar pesanan konveksi, grafis, dan custom"
+    },
+    "/work_orders/{workOrderId}": {
+      "schema": "WorkOrder",
+      "description": "Antrean produksi dan kartu SPK"
+    },
+    "/material_stocks/{stockId}": {
+      "schema": "MaterialStock",
+      "description": "Inventori stok bahan baku"
+    },
+    "/material_purchases/{purchaseId}": {
+      "schema": "MaterialPurchase",
+      "description": "Transaksi pembelian bahan dari supplier"
+    },
+    "/material_usages/{usageId}": {
+      "schema": "MaterialUsage",
+      "description": "Catatan pemakaian bahan per order untuk HPP"
+    },
+    "/order_production_costs/{costId}": {
+      "schema": "OrderProductionCost",
+      "description": "Biaya vendor dan produksi langsung per order"
+    },
+    "/operational_expenses/{expenseId}": {
+      "schema": "OperationalExpense",
+      "description": "Pengeluaran biaya operasional non-order"
+    },
+    "/customer_payments/{paymentId}": {
+      "schema": "CustomerPayment",
+      "description": "Riwayat pembayaran customer (DP dan pelunasan)"
+    },
+    "/supplier_payments/{paymentId}": {
+      "schema": "SupplierPayment",
+      "description": "Riwayat pembayaran hutang ke supplier"
+    }
+  }
+}

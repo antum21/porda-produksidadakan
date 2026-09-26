@@ -1,18 +1,140 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read/write to users, orders, and work_orders for authenticated users and during app usage
+
+    // Helper functions for data integrity & validation
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // 1. Users & Staff Collection
+    // Passwords must NEVER be written to Firestore
     match /users/{userId} {
-      allow read, write: if true;
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create: if isValidId(userId)
+        && !('password' in incoming())
+        && incoming().username is string && incoming().username.size() >= 3 && incoming().username.size() <= 64
+        && incoming().nama is string && incoming().nama.size() >= 2 && incoming().nama.size() <= 120
+        && incoming().role in ['super_admin', 'Admin', 'Keuangan', 'Printing', 'Logistik', 'Produksi', 'Pengantaran'];
+      allow update: if isValidId(userId)
+        && !('password' in incoming())
+        && incoming().username is string
+        && incoming().nama is string
+        && incoming().role in ['super_admin', 'Admin', 'Keuangan', 'Printing', 'Logistik', 'Produksi', 'Pengantaran'];
+      allow delete: if isValidId(userId) && userId != 'usr-superadmin-01';
     }
+
+    // 2. Orders Collection
     match /orders/{orderId} {
-      allow read, write: if true;
+      allow get: if isValidId(orderId);
+      allow list: if true;
+      allow create: if isValidId(orderId)
+        && incoming().nama_klien is string && incoming().nama_klien.size() > 0 && incoming().nama_klien.size() <= 200
+        && incoming().total_harga is number && incoming().total_harga >= 0
+        && incoming().nominal_dp is number && incoming().nominal_dp >= 0;
+      allow update: if isValidId(orderId)
+        && incoming().nama_klien is string
+        && incoming().total_harga is number
+        && incoming().nominal_dp is number;
+      allow delete: if isValidId(orderId);
     }
+
+    // 3. Work Orders (SPK Produksi)
     match /work_orders/{workOrderId} {
-      allow read, write: if true;
+      allow get: if isValidId(workOrderId);
+      allow list: if true;
+      allow create, update: if isValidId(workOrderId)
+        && incoming().order_id is string && incoming().order_id.size() > 0;
+      allow delete: if isValidId(workOrderId);
     }
+
+    // 4. Material Stocks (Bahan Baku)
+    match /material_stocks/{stockId} {
+      allow get: if isValidId(stockId);
+      allow list: if true;
+      allow create, update: if isValidId(stockId)
+        && incoming().nama_bahan is string && incoming().nama_bahan.size() > 0
+        && incoming().stok is number;
+      allow delete: if isValidId(stockId);
+    }
+
+    // 5. Material Purchases (Pembelian Bahan & Hutang Supplier)
+    match /material_purchases/{purchaseId} {
+      allow get: if isValidId(purchaseId);
+      allow list: if true;
+      allow create, update: if isValidId(purchaseId)
+        && incoming().supplier is string && incoming().supplier.size() > 0
+        && incoming().total is number && incoming().total >= 0;
+      allow delete: if isValidId(purchaseId);
+    }
+
+    // 6. Material Usages (Pemakaian Bahan & HPP)
+    match /material_usages/{usageId} {
+      allow get: if isValidId(usageId);
+      allow list: if true;
+      allow create, update: if isValidId(usageId)
+        && incoming().order_id is string
+        && incoming().qty is number && incoming().qty >= 0;
+      allow delete: if isValidId(usageId);
+    }
+
+    // 7. Order Production Costs (Biaya Vendor Maklon Langsung)
+    match /order_production_costs/{costId} {
+      allow get: if isValidId(costId);
+      allow list: if true;
+      allow create, update: if isValidId(costId)
+        && incoming().order_id is string
+        && incoming().biaya is number && incoming().biaya >= 0;
+      allow delete: if isValidId(costId);
+    }
+
+    // 8. Operational Expenses (Beban Operasional Umum)
+    match /operational_expenses/{expenseId} {
+      allow get: if isValidId(expenseId);
+      allow list: if true;
+      allow create, update: if isValidId(expenseId)
+        && incoming().kategori is string
+        && incoming().nominal is number && incoming().nominal >= 0;
+      allow delete: if isValidId(expenseId);
+    }
+
+    // 9. Customer Payments (Pembayaran Pelanggan DP & Lunas)
+    match /customer_payments/{paymentId} {
+      allow get: if isValidId(paymentId);
+      allow list: if true;
+      allow create, update: if isValidId(paymentId)
+        && incoming().order_id is string
+        && incoming().nominal is number && incoming().nominal >= 0;
+      allow delete: if isValidId(paymentId);
+    }
+
+    // 10. Supplier Payments (Pembayaran Hutang Supplier)
+    match /supplier_payments/{paymentId} {
+      allow get: if isValidId(paymentId);
+      allow list: if true;
+      allow create, update: if isValidId(paymentId)
+        && incoming().purchase_id is string
+        && incoming().nominal is number && incoming().nominal >= 0;
+      allow delete: if isValidId(paymentId);
+    }
+
+    // 11. Other Revenues (Pendapatan Lain-lain)
+    match /other_revenues/{revenueId} {
+      allow get: if isValidId(revenueId);
+      allow list: if true;
+      allow create, update: if isValidId(revenueId)
+        && incoming().nominal is number && incoming().nominal >= 0;
+      allow delete: if isValidId(revenueId);
+    }
+
+    // Default Deny Catch-all: Closes all unspecified paths and wildcards
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

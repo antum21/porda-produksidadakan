@@ -38,20 +38,54 @@
   }
 }
 
+@page {
+  size: 80mm auto;
+  margin: 0mm;
+}
+
 @media print {
-  /* Hide everything on page except the printable modal container */
+  /* Enforce black and white high contrast thermal print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide entire page content */
   body * {
     visibility: hidden;
   }
 
-  #printable-invoice,
-  #printable-invoice *,
+  /* Only make the thermal receipt or SPK visible */
+  #printable-thermal-receipt,
+  #printable-thermal-receipt *,
   #printable-spk,
   #printable-spk * {
     visibility: visible;
   }
 
-  #printable-invoice,
+  #printable-thermal-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 3mm 2mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    display: block !important;
+  }
+
+  /* Remove all images, icons, and SVG in print */
+  #printable-thermal-receipt img,
+  #printable-thermal-receipt svg {
+    display: none !important;
+  }
+
   #printable-spk {
     position: absolute;
     left: 0;
@@ -64,8 +98,6 @@
     box-shadow: none !important;
   }
 
-  /* Reset colors to high contrast for printing */
-  #printable-invoice h2,
   #printable-spk h2 {
     color: black !important;
   }

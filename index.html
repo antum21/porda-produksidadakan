@@ -10,6 +10,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
   </head>
   <body class="bg-[#F8F5F2] text-slate-800 antialiased selection:bg-[#E63946] selection:text-white font-['Plus_Jakarta_Sans',sans-serif]">
+    <script>
+      // Suppress harmless Vite HMR WebSocket disconnection errors in cloud container preview
+      window.addEventListener('unhandledrejection', function(event) {
+        if (event && event.reason && (
+          String(event.reason?.message || event.reason).includes('WebSocket') ||
+          String(event.reason?.message || event.reason).includes('websocket')
+        )) {
+          event.preventDefault();
+        }
+      });
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

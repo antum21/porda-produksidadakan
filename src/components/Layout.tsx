@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import React from 'react';
+import { NavLink } from 'react-router-dom';
 import { BottomNav } from './BottomNav';
 import { useAuth } from '../context/AuthContext';
-import { UserRole } from '../types';
 import {
   LayoutDashboard,
   FileText,
@@ -10,15 +9,8 @@ import {
   PlusCircle,
   ShieldCheck,
   Printer,
-  ShoppingBag,
-  Cpu,
-  Truck,
   CircleDollarSign,
   LogOut,
-  ChevronDown,
-  Sparkles,
-  UserCheck,
-  CheckCircle2,
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -26,23 +18,8 @@ interface LayoutProps {
   onOpenNewOrder?: () => void;
 }
 
-const ROLE_ICONS: Record<UserRole, React.ElementType> = {
-  Admin: ShieldCheck,
-  Printing: Printer,
-  Logistik: ShoppingBag,
-  Produksi: Cpu,
-  Pengantaran: Truck,
-  Keuangan: CircleDollarSign,
-};
-
-const ALL_ROLES: UserRole[] = ['Admin', 'Printing', 'Logistik', 'Produksi', 'Pengantaran', 'Keuangan'];
-
 export const Layout: React.FC<LayoutProps> = ({ children, onOpenNewOrder }) => {
-  const { userProfile, role, switchRole, logout } = useAuth();
-  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
-  const location = useLocation();
-
-  const CurrentRoleIcon = ROLE_ICONS[role] || ShieldCheck;
+  const { userProfile, logout } = useAuth();
 
   return (
     <div className="min-h-screen bg-[#F8F5F2] flex flex-col lg:flex-row text-slate-800 selection:bg-[#E63946] selection:text-white">
@@ -99,7 +76,22 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenNewOrder }) => {
               }
             >
               <LayoutDashboard className="w-5 h-5" />
-              <span>Dashboard & Finansial</span>
+              <span>Dashboard Ringkasan</span>
+            </NavLink>
+
+            <NavLink
+              id="sidebar-nav-finance"
+              to="/finance"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all ${
+                  isActive
+                    ? 'bg-red-50 text-[#E63946] shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`
+              }
+            >
+              <CircleDollarSign className="w-5 h-5 text-[#E63946]" />
+              <span>Manajemen Keuangan</span>
             </NavLink>
 
             <NavLink
@@ -115,6 +107,21 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenNewOrder }) => {
             >
               <FileText className="w-5 h-5" />
               <span>Manajemen Pesanan</span>
+            </NavLink>
+
+            <NavLink
+              id="sidebar-nav-invoice"
+              to="/invoice"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all ${
+                  isActive
+                    ? 'bg-red-50 text-[#E63946] shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`
+              }
+            >
+              <Printer className="w-5 h-5" />
+              <span>Faktur Invoice</span>
             </NavLink>
 
             <NavLink
@@ -135,7 +142,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenNewOrder }) => {
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
             </NavLink>
 
-            {/* Admin Panel (Accessible for all to view/request, Super Admin to create) */}
             <NavLink
               id="sidebar-nav-admin-users"
               to="/admin/users"
@@ -158,66 +164,25 @@ export const Layout: React.FC<LayoutProps> = ({ children, onOpenNewOrder }) => {
           </nav>
         </div>
 
-        {/* User Profile & Role Switcher Footer */}
+        {/* User Profile & Logout Footer */}
         <div className="pt-4 border-t border-slate-100 space-y-3 relative">
           <div className="bg-[#F8F5F2] p-3 rounded-2xl border border-slate-200/80">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-bold uppercase text-slate-400">Hak Akses Aktif</span>
-              <button
-                type="button"
-                onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-                className="text-[11px] font-bold text-[#E63946] hover:underline cursor-pointer flex items-center gap-0.5"
-              >
-                <span>Ganti</span>
-                <ChevronDown className="w-3 h-3" />
-              </button>
+              <span className="text-[11px] font-bold uppercase text-slate-400">Akun Aktif</span>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                Terverifikasi
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-[#E63946] text-white flex items-center justify-center text-xs">
-                <CurrentRoleIcon className="w-4 h-4" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#E63946] text-white flex items-center justify-center text-xs shadow-xs">
+                <ShieldCheck className="w-4 h-4" />
               </div>
               <div className="truncate">
-                <p className="text-xs font-bold text-slate-900 truncate">{role}</p>
-                <p className="text-[10px] text-slate-500 truncate">{userProfile?.nama || 'Tim Porda'}</p>
+                <p className="text-xs font-bold text-slate-900 truncate">Super Admin</p>
+                <p className="text-[10px] text-slate-500 truncate">{userProfile?.nama || 'Super Admin PORDA'}</p>
               </div>
             </div>
           </div>
-
-          {/* Role Dropdown on Desktop */}
-          {showRoleDropdown && (
-            <div
-              className="absolute bottom-20 left-3 right-3 bg-white rounded-2xl p-2 shadow-xl border border-slate-200 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150"
-              onMouseLeave={() => setShowRoleDropdown(false)}
-            >
-              <p className="text-[10px] font-bold text-slate-400 px-2.5 py-1 uppercase">Ganti Role Kerja</p>
-              <div className="space-y-1">
-                {ALL_ROLES.map((r) => {
-                  const Icon = ROLE_ICONS[r];
-                  const isCur = role === r;
-                  return (
-                    <button
-                      key={r}
-                      onClick={async () => {
-                        await switchRole(r);
-                        setShowRoleDropdown(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        isCur
-                          ? 'bg-red-50 text-[#E63946]'
-                          : 'text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Icon className="w-3.5 h-3.5" />
-                        <span>{r}</span>
-                      </div>
-                      {isCur && <CheckCircle2 className="w-3.5 h-3.5 text-[#E63946]" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Logout Button */}
           <button

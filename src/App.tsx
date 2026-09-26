@@ -8,6 +8,10 @@ import { DashboardPage } from './pages/DashboardPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { ProductionPage } from './pages/ProductionPage';
 import { AdminUsersPage } from './pages/AdminUsersPage';
+import { InvoicePage } from './pages/InvoicePage';
+import { ThermalReceiptPage } from './pages/ThermalReceiptPage';
+import { PrintInvoicePdfPage } from './pages/PrintInvoicePdfPage';
+import { FinancePage } from './pages/FinancePage';
 import { NewOrderModal } from './components/NewOrderModal';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -31,7 +35,9 @@ const AnimatedRoutes: React.FC<{ onOpenNewOrder: () => void }> = ({ onOpenNewOrd
             path="/dashboard"
             element={<DashboardPage onOpenNewOrder={onOpenNewOrder} />}
           />
+          <Route path="/finance" element={<FinancePage />} />
           <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/invoice" element={<InvoicePage />} />
           <Route path="/production" element={<ProductionPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -43,8 +49,19 @@ const AnimatedRoutes: React.FC<{ onOpenNewOrder: () => void }> = ({ onOpenNewOrd
 
 // Route Guard Component
 const ProtectedApp: React.FC = () => {
-  const { currentUser, userProfile, loading } = useAuth();
+  const { userProfile, loading } = useAuth();
   const [isGlobalNewOrderOpen, setIsGlobalNewOrderOpen] = useState(false);
+  const location = useLocation();
+
+  // Standalone route for 80mm thermal receipt (opens in new tab)
+  if (location.pathname === '/print/receipt') {
+    return <ThermalReceiptPage />;
+  }
+
+  // Standalone route for PDF Invoice A4 print (opens in new tab)
+  if (location.pathname === '/print/invoice') {
+    return <PrintInvoicePdfPage />;
+  }
 
   if (loading) {
     return (
@@ -53,13 +70,13 @@ const ProtectedApp: React.FC = () => {
           P
         </div>
         <p className="text-sm font-bold text-slate-800">Menghubungkan ke Porda ERP...</p>
-        <p className="text-xs text-slate-400 mt-1">Menginisialisasi Firebase Firestore & Autentikasi</p>
+        <p className="text-xs text-slate-400 mt-1">Memverifikasi Sesi Super Admin</p>
       </div>
     );
   }
 
   // If not logged in, show login page
-  if (!currentUser && !userProfile) {
+  if (!userProfile) {
     return <LoginPage />;
   }
 

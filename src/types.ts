@@ -1,6 +1,6 @@
-export type UserRole = 'Admin' | 'Keuangan' | 'Printing' | 'Logistik' | 'Produksi' | 'Pengantaran';
+export type UserRole = 'super_admin' | 'Admin' | 'Keuangan' | 'Printing' | 'Logistik' | 'Produksi' | 'Pengantaran';
 
-export type ProductionStage = 'Printing' | 'Belanja' | 'Produksi' | 'Pengantaran';
+export type ProductionStage = 'Printing' | 'Logistik' | 'Belanja' | 'Produksi' | 'Pengantaran';
 
 export type OrderStatus = 'Menunggu Pembayaran' | 'Diproses' | 'Selesai';
 
@@ -12,9 +12,8 @@ export interface UserProfile {
   uid: string;
   username: string;
   nama: string;
-  email: string;
+  email?: string;
   role: UserRole;
-  password?: string;
   avatarUrl?: string;
   phone?: string;
   status?: 'active' | 'inactive';
@@ -66,6 +65,14 @@ export interface ApparelDesignCard {
   items: ApparelOrderItemRow[];
 }
 
+export interface InvoiceTableRow {
+  id: string;
+  deskripsi: string;
+  harga_satuan: number;
+  qty: number;
+  total_harga: number;
+}
+
 export interface OrderItem {
   id: string;
   kategori_projek?: ProjectCategory; // 'apparel' | 'grafis' | 'lainnya'
@@ -96,12 +103,198 @@ export interface OrderItem {
   invoice_date?: string;
   deadline: string;
   apparel_designs?: ApparelDesignCard[];
+  invoice_items?: InvoiceTableRow[];
+  mockup_url?: string;
   catatan?: string;
   created_at: string;
   created_by?: string;
   committed_at?: string;
   work_order_id?: string;
+  // Financial & HPP Fields (internal only, optional for backward compatibility)
+  hpp?: number;
+  laba_kotor?: number;
+  margin_persen?: number;
+  material_usages?: MaterialUsage[];
+  production_costs?: OrderProductionCost[];
+  payment_history?: CustomerPaymentRecord[];
 }
+
+export type MaterialCategory =
+  | 'Kaos Polos'
+  | 'Kain'
+  | 'DTF / Film'
+  | 'Tinta & Kimia'
+  | 'Kertas & Stiker'
+  | 'Plastik & Packaging'
+  | 'Bahan Percetakan'
+  | 'Aksesoris & Finishing'
+  | 'Bahan Lainnya';
+
+export type PaymentMethod =
+  | 'Cash'
+  | 'Tunai / Cash'
+  | 'Transfer'
+  | 'Transfer Bank'
+  | 'QRIS'
+  | 'Debit'
+  | 'Tempo / Hutang'
+  | 'Lainnya';
+
+export type PurchasePaymentStatus = 'Lunas' | 'Belum Lunas' | 'DP / Sebagian';
+
+export type OperationalExpenseCategory =
+  | 'Listrik'
+  | 'Internet'
+  | 'Transportasi'
+  | 'Bensin'
+  | 'Maintenance Mesin'
+  | 'Sewa'
+  | 'Sewa Tempat / Workshop'
+  | 'Sewa Tempat'
+  | 'Gaji'
+  | 'Gaji & Upah Karyawan'
+  | 'Gaji & Uang Makan'
+  | 'Marketing'
+  | 'Marketing & Iklan'
+  | 'Pemasaran & Iklan'
+  | 'ATK'
+  | 'ATK & Perlengkapan'
+  | 'Alat Tulis & Kantor'
+  | 'Administrasi'
+  | 'Biaya Administrasi'
+  | 'Packaging'
+  | 'Biaya Bank'
+  | 'Air'
+  | 'Konsumsi Workshop'
+  | 'Biaya Lainnya'
+  | 'Lain-lain'
+  | 'Lainnya';
+
+export type CustomerPaymentType = 'DP' | 'Pelunasan' | 'Cicilan' | 'Pembayaran Penuh';
+
+export interface MaterialStock {
+  id: string;
+  nama_bahan: string;
+  kategori: MaterialCategory | string;
+  stok: number;
+  satuan: string; // 'Pcs', 'Meter', 'Roll', 'Kg', 'Lembar', 'Botol', 'Pack', 'Box', etc.
+  harga_modal: number; // Rp per unit
+  stok_minimum: number;
+  supplier_terakhir?: string;
+  catatan?: string;
+  updated_at: string;
+}
+
+export interface MaterialPurchase {
+  id: string;
+  nomor_pembelian: string;
+  tanggal: string; // YYYY-MM-DD
+  supplier: string;
+  nama_bahan: string;
+  kategori: MaterialCategory | string;
+  qty: number;
+  satuan: string;
+  harga_satuan: number;
+  total: number;
+  status_pembayaran: PurchasePaymentStatus;
+  jumlah_dibayar: number;
+  sisa_hutang: number;
+  metode_pembayaran: PaymentMethod | string;
+  catatan?: string;
+  material_stock_id?: string;
+  created_at: string;
+  created_by?: string;
+}
+
+export interface SupplierPayment {
+  id: string;
+  purchase_id: string;
+  nomor_pembelian: string;
+  supplier: string;
+  tanggal: string;
+  nominal: number;
+  metode_pembayaran: PaymentMethod | string;
+  catatan?: string;
+  created_at: string;
+  created_by?: string;
+}
+
+export interface MaterialUsage {
+  id: string;
+  order_id: string;
+  invoice_no: string;
+  nama_klien?: string;
+  material_stock_id: string;
+  nama_bahan: string;
+  qty: number;
+  satuan: string;
+  harga_modal_satuan: number;
+  total_biaya: number; // qty * harga_modal_satuan
+  tanggal: string;
+  catatan?: string;
+  created_at: string;
+  created_by?: string;
+}
+
+export interface OrderProductionCost {
+  id: string;
+  order_id: string;
+  invoice_no: string;
+  jenis_biaya: 'Jahit' | 'Bordir' | 'Sablon Vendor' | 'Finishing' | 'Cutting' | 'Packaging' | 'Vendor Lainnya' | string;
+  nama_vendor?: string;
+  deskripsi: string;
+  biaya: number;
+  tanggal: string;
+  created_at: string;
+  created_by?: string;
+}
+
+export interface OperationalExpense {
+  id: string;
+  nomor_transaksi: string;
+  tanggal: string;
+  kategori: OperationalExpenseCategory | string;
+  deskripsi: string;
+  nominal: number;
+  metode_pembayaran: PaymentMethod | string;
+  catatan?: string;
+  created_at: string;
+  created_by?: string;
+  updated_at?: string;
+  updated_by?: string;
+  is_void?: boolean;
+  void_reason?: string;
+  void_at?: string;
+  void_by?: string;
+}
+
+export interface CustomerPaymentRecord {
+  id: string;
+  order_id: string;
+  invoice_no: string;
+  nama_klien: string;
+  jenis_pembayaran: CustomerPaymentType;
+  nominal: number;
+  metode_pembayaran: PaymentMethod | string;
+  tanggal: string;
+  catatan?: string;
+  diterima_oleh?: string;
+  created_at: string;
+}
+
+export interface OtherRevenue {
+  id: string;
+  tanggal: string;
+  sumber: string;
+  nominal: number;
+  metode_pembayaran: PaymentMethod | string;
+  catatan?: string;
+  created_at: string;
+  created_by?: string;
+}
+
+export type FinancePeriod = 'today' | 'week' | 'month' | 'custom';
+
 
 export interface StageLog {
   tahap: ProductionStage;
@@ -133,6 +326,8 @@ export interface WorkOrder {
   deskripsi_custom?: string;
   deadline: string;
   apparel_designs?: ApparelDesignCard[];
+  mockup_url?: string;
+  production_images?: Array<{ url: string; label?: string; uploaded_at?: string; uploaded_by?: string }>;
   tahap_sekarang: ProductionStage;
   nama_vendor: string | null; // Vendor cetak eksternal atau vendor supplier blank apparel
   diupdate_oleh: string;
