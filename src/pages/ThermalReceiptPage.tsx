@@ -189,6 +189,14 @@ export const ThermalReceiptPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-200 text-slate-900 flex flex-col items-center py-4 sm:py-8 font-mono print:bg-white print:p-0 print:m-0">
+      {/* SCOPED 80MM THERMAL PRINT RULES */}
+      <style>{`
+        @page {
+          size: 80mm auto;
+          margin: 0mm;
+        }
+      `}</style>
+
       {/* ========================================================================= */}
       {/* SCREEN TOOLBAR (HIDDEN WHEN PRINTING)                                      */}
       {/* ========================================================================= */}

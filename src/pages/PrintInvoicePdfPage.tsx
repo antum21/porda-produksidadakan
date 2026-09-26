@@ -339,7 +339,53 @@ export const PrintInvoicePdfPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#52525B] print:bg-white text-slate-800 flex flex-col items-center py-4 px-2 sm:px-4">
+    <div className="min-h-screen bg-[#52525B] print:bg-white text-slate-800 flex flex-col items-center py-4 px-2 sm:px-4 print:p-0 print:m-0">
+      {/* SCOPED A4 PRINT RULES */}
+      <style>{`
+        @page {
+          size: A4 portrait;
+          margin: 8mm 6mm;
+        }
+        @media print {
+          html, body {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+          }
+          body * {
+            visibility: visible !important;
+          }
+          .print\\:hidden, #btn-trigger-pdf-print {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          #pdf-printable-invoice {
+            visibility: visible !important;
+            display: block !important;
+            position: relative !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            background-color: #ffffff !important;
+          }
+          #pdf-printable-invoice * {
+            visibility: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #pdf-printable-invoice img {
+            visibility: visible !important;
+            display: block !important;
+            max-width: 100% !important;
+          }
+        }
+      `}</style>
+
       {/* FLOATING ACTION TOOLBAR (HIDDEN IN PRINT) */}
       <div className="w-full max-w-4xl mb-4 bg-slate-900 text-white p-3 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3 px-4 print:hidden border border-slate-800">
         <div className="flex items-center gap-3">
@@ -379,7 +425,7 @@ export const PrintInvoicePdfPage: React.FC = () => {
       {/* A4 PRINTABLE INVOICE CONTAINER */}
       <div
         id="pdf-printable-invoice"
-        className="w-full max-w-4xl bg-white rounded-2xl md:rounded-3xl shadow-2xl overflow-hidden border border-slate-200 text-slate-800 print:shadow-none print:border-none print:rounded-none print:w-full print:max-w-none"
+        className="w-full max-w-4xl bg-white rounded-2xl md:rounded-3xl shadow-2xl overflow-hidden border border-slate-200 text-slate-800 print:shadow-none print:border-none print:rounded-none print:w-full print:max-w-none print:p-0"
       >
         {/* HEADER SECTION (PORDA CRIMSON RED) */}
         <header className="bg-gradient-to-r from-[#E63946] via-[#D90429] to-[#C1121F] text-white p-5 sm:p-7 select-none print:p-5">

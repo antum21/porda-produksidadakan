@@ -39,34 +39,83 @@
 }
 
 @page {
-  size: 80mm auto;
-  margin: 0mm;
+  size: auto;
+  margin: 6mm;
 }
 
 @media print {
-  /* Enforce black and white high contrast thermal print */
+  /* Enforce exact colors, backgrounds, gradients, and images */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* Hide entire page content */
+  /* Universal hide for print-hidden elements */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Hide background elements by default when printing overlays/modals */
   body * {
     visibility: hidden;
   }
 
-  /* Only make the thermal receipt or SPK visible */
-  #printable-thermal-receipt,
-  #printable-thermal-receipt *,
+  /* Explicitly make invoices (dedicated A4 PDF and modal), SPK, and thermal receipt visible */
+  #pdf-printable-invoice,
+  #pdf-printable-invoice *,
+  #printable-invoice,
+  #printable-invoice *,
   #printable-spk,
-  #printable-spk * {
-    visibility: visible;
+  #printable-spk *,
+  #printable-thermal-receipt,
+  #printable-thermal-receipt * {
+    visibility: visible !important;
   }
 
+  /* Make sure images inside invoices and SPKs are explicitly rendered and not hidden */
+  #pdf-printable-invoice img,
+  #printable-invoice img,
+  #printable-spk img {
+    visibility: visible !important;
+    display: block !important;
+    max-width: 100% !important;
+  }
+
+  /* Standalone A4 PDF printable invoice page */
+  #pdf-printable-invoice {
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    display: block !important;
+  }
+
+  /* Invoice modal print styling */
+  #printable-invoice {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    display: block !important;
+  }
+
+  /* 80mm thermal receipt styling */
   #printable-thermal-receipt {
-    position: absolute;
-    left: 0;
-    top: 0;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
     width: 80mm !important;
     max-width: 80mm !important;
     margin: 0 auto !important;
@@ -80,19 +129,20 @@
     display: block !important;
   }
 
-  /* Remove all images, icons, and SVG in print */
+  /* Remove heavy decorative images/svg in thermal receipt */
   #printable-thermal-receipt img,
   #printable-thermal-receipt svg {
     display: none !important;
   }
 
+  /* SPK Work Order styling */
   #printable-spk {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 20px;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
     background: white !important;
     color: black !important;
     box-shadow: none !important;
@@ -107,6 +157,16 @@
     background: transparent !important;
     position: static !important;
     padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  #invoice-modal-card {
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }
+
 
