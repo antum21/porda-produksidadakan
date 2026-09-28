@@ -11,6 +11,8 @@ import {
   PackageCheck,
   Clock,
   Printer,
+  Flame,
+  Package,
   ShoppingBag,
   Cpu,
   Truck,
@@ -73,13 +75,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNewOrder }) 
   const completedOrders = orders.filter((o) => o.status === 'Selesai');
   const waitingDpOrders = orders.filter((o) => (o.nominal_dp || 0) < o.total_biaya * 0.7 && o.status !== 'Selesai');
 
-  // Breakdown stages in WorkOrders
-  const stageCounts: Record<ProductionStage, number> = {
-    Printing: workOrders.filter((w) => w.tahap_sekarang === 'Printing' && !w.completed_at).length,
-    Logistik: workOrders.filter((w) => (w.tahap_sekarang === 'Logistik' || w.tahap_sekarang === 'Belanja') && !w.completed_at).length,
-    Belanja: workOrders.filter((w) => (w.tahap_sekarang === 'Logistik' || w.tahap_sekarang === 'Belanja') && !w.completed_at).length,
-    Produksi: workOrders.filter((w) => w.tahap_sekarang === 'Produksi' && !w.completed_at).length,
-    Pengantaran: workOrders.filter((w) => w.tahap_sekarang === 'Pengantaran' && !w.completed_at).length,
+  // Breakdown stages in WorkOrders (5 Tahap)
+  const normalizeStageKey = (st: string) => {
+    const s = (st || '').toLowerCase().trim();
+    if (s === 'waiting' || s === 'menunggu' || s === 'logistik' || s === 'belanja') return 'Waiting';
+    if (s === 'print' || s === 'printing') return 'Print';
+    if (s === 'heat press' || s === 'heatpress' || s === 'press' || s === 'curing') return 'Heat Press';
+    if (s === 'packing' || s === 'produksi' || s === 'qc') return 'Packing';
+    if (s === 'shipping' || s === 'pengantaran' || s === 'antar' || s === 'kirim') return 'Shipping';
+    return 'Waiting';
+  };
+
+  const stageCounts: Record<string, number> = {
+    Waiting: workOrders.filter((w) => normalizeStageKey(w.tahap_sekarang) === 'Waiting' && !w.completed_at).length,
+    Print: workOrders.filter((w) => normalizeStageKey(w.tahap_sekarang) === 'Print' && !w.completed_at).length,
+    'Heat Press': workOrders.filter((w) => normalizeStageKey(w.tahap_sekarang) === 'Heat Press' && !w.completed_at).length,
+    Packing: workOrders.filter((w) => normalizeStageKey(w.tahap_sekarang) === 'Packing' && !w.completed_at).length,
+    Shipping: workOrders.filter((w) => normalizeStageKey(w.tahap_sekarang) === 'Shipping' && !w.completed_at).length,
   };
 
   const totalPcsActive = activeOrders.reduce((acc, o) => acc + (o.jumlah_pcs || 0), 0);
@@ -103,7 +115,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNewOrder }) 
       <Header
         badge="Realtime Firestore ERP"
         title="Ringkasan Produksi"
-        subtitle="Pantau omset, laba, dan antrean 4 tahap cetak apparel"
+        subtitle="Pantau omset, laba, dan antrean 5 tahap proses produksi (Waiting, Print, Heat Press, Packing, Shipping)"
       />
 
       <div className="px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-5">
@@ -221,7 +233,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNewOrder }) 
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                  Alur 4 Tahap Produksi
+                  Alur 5 Tahap Produksi
                 </h2>
                 <p className="text-xs text-slate-400">Distribusi antrean work order saat ini</p>
               </div>
@@ -234,65 +246,80 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onOpenNewOrder }) 
               </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {/* Tahap 1: Printing */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              {/* Tahap 1: Waiting */}
               <div
                 onClick={() => navigate('/production')}
-                className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 cursor-pointer hover:bg-amber-100/70 transition-all text-left"
+                className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3 cursor-pointer hover:bg-slate-100 transition-all text-left"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <Printer className="w-4 h-4 text-amber-700" />
+                <div className="flex items-center justify-between mb-1.5">
+                  <Clock className="w-3.5 h-3.5 text-slate-700" />
+                  <span className="text-xs font-black font-['Outfit'] bg-white px-2 py-0.5 rounded-full text-slate-800 border border-slate-200">
+                    {stageCounts.Waiting}
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-slate-900 leading-tight">1. Waiting</p>
+                <p className="text-[10px] text-slate-500">Antrean & Bahan</p>
+              </div>
+
+              {/* Tahap 2: Print */}
+              <div
+                onClick={() => navigate('/production')}
+                className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3 cursor-pointer hover:bg-amber-100/70 transition-all text-left"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Printer className="w-3.5 h-3.5 text-amber-700" />
                   <span className="text-xs font-black font-['Outfit'] bg-white px-2 py-0.5 rounded-full text-amber-800 border border-amber-200">
-                    {stageCounts.Printing}
+                    {stageCounts.Print}
                   </span>
                 </div>
-                <p className="text-xs font-bold text-slate-900 leading-tight">1. Printing</p>
-                <p className="text-[11px] text-slate-500">Cetak DTF / Sablon</p>
+                <p className="text-xs font-bold text-slate-900 leading-tight">2. Print</p>
+                <p className="text-[10px] text-slate-500">DTF / Sablon</p>
               </div>
 
-              {/* Tahap 2: Logistik */}
+              {/* Tahap 3: Heat Press */}
               <div
                 onClick={() => navigate('/production')}
-                className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-3.5 cursor-pointer hover:bg-blue-100/70 transition-all text-left"
+                className="bg-orange-50/70 border border-orange-200/80 rounded-2xl p-3 cursor-pointer hover:bg-orange-100/70 transition-all text-left"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <ShoppingBag className="w-4 h-4 text-blue-700" />
-                  <span className="text-xs font-black font-['Outfit'] bg-white px-2 py-0.5 rounded-full text-blue-800 border border-blue-200">
-                    {stageCounts.Belanja}
+                <div className="flex items-center justify-between mb-1.5">
+                  <Flame className="w-3.5 h-3.5 text-orange-600" />
+                  <span className="text-xs font-black font-['Outfit'] bg-white px-2 py-0.5 rounded-full text-orange-800 border border-orange-200">
+                    {stageCounts['Heat Press']}
                   </span>
                 </div>
-                <p className="text-xs font-bold text-slate-900 leading-tight">2. Logistik</p>
-                <p className="text-[11px] text-slate-500">Bahan & Supplier</p>
+                <p className="text-xs font-bold text-slate-900 leading-tight">3. Heat Press</p>
+                <p className="text-[10px] text-slate-500">Press & Curing</p>
               </div>
 
-              {/* Tahap 3: Produksi */}
+              {/* Tahap 4: Packing */}
               <div
                 onClick={() => navigate('/production')}
-                className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-3.5 cursor-pointer hover:bg-emerald-100/70 transition-all text-left"
+                className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-3 cursor-pointer hover:bg-emerald-100/70 transition-all text-left"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <Cpu className="w-4 h-4 text-emerald-700" />
+                <div className="flex items-center justify-between mb-1.5">
+                  <Package className="w-3.5 h-3.5 text-emerald-700" />
                   <span className="text-xs font-black font-['Outfit'] bg-white px-2 py-0.5 rounded-full text-emerald-800 border border-emerald-200">
-                    {stageCounts.Produksi}
+                    {stageCounts.Packing}
                   </span>
                 </div>
-                <p className="text-xs font-bold text-slate-900 leading-tight">3. Produksi</p>
-                <p className="text-[11px] text-slate-500">Press, QC, Pack</p>
+                <p className="text-xs font-bold text-slate-900 leading-tight">4. Packing</p>
+                <p className="text-[10px] text-slate-500">QC & Kemas</p>
               </div>
 
-              {/* Tahap 4: Pengantaran */}
+              {/* Tahap 5: Shipping */}
               <div
                 onClick={() => navigate('/production')}
-                className="bg-purple-50/70 border border-purple-200/80 rounded-2xl p-3.5 cursor-pointer hover:bg-purple-100/70 transition-all text-left"
+                className="bg-purple-50/70 border border-purple-200/80 rounded-2xl p-3 cursor-pointer hover:bg-purple-100/70 transition-all text-left col-span-2 sm:col-span-1"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <Truck className="w-4 h-4 text-purple-700" />
+                <div className="flex items-center justify-between mb-1.5">
+                  <Truck className="w-3.5 h-3.5 text-purple-700" />
                   <span className="text-xs font-black font-['Outfit'] bg-white px-2 py-0.5 rounded-full text-purple-800 border border-purple-200">
-                    {stageCounts.Pengantaran}
+                    {stageCounts.Shipping}
                   </span>
                 </div>
-                <p className="text-xs font-bold text-slate-900 leading-tight">4. Antar</p>
-                <p className="text-[11px] text-slate-500">Kurir & Kirim</p>
+                <p className="text-xs font-bold text-slate-900 leading-tight">5. Shipping</p>
+                <p className="text-[10px] text-slate-500">Kurir & Kirim</p>
               </div>
             </div>
           </div>

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { WorkOrder, ProductionStage } from '../types';
 import {
+  Clock,
   Printer,
-  ShoppingBag,
-  Cpu,
+  Flame,
+  Package,
   Truck,
   CheckCircle2,
-  Clock,
   Loader2,
 } from 'lucide-react';
 
@@ -32,10 +32,22 @@ interface StageStep {
 
 const STAGES: StageStep[] = [
   {
-    id: 'Printing',
-    label: 'Printing',
-    shortLabel: 'Print',
+    id: 'Waiting',
+    label: 'Waiting',
+    shortLabel: 'Wait',
     orderNum: 1,
+    icon: Clock,
+    activeColor: 'text-slate-700 bg-slate-500',
+    trackColor: 'bg-slate-500',
+    badgeBg: 'bg-slate-100 text-slate-800 border-slate-300',
+    ringColor: 'ring-slate-400',
+    desc: 'Menunggu Antrean & Bahan',
+  },
+  {
+    id: 'Print',
+    label: 'Print',
+    shortLabel: 'Print',
+    orderNum: 2,
     icon: Printer,
     activeColor: 'text-amber-700 bg-amber-500',
     trackColor: 'bg-amber-500',
@@ -44,34 +56,34 @@ const STAGES: StageStep[] = [
     desc: 'Cetak Sablon / DTF',
   },
   {
-    id: 'Logistik',
-    label: 'Logistik',
-    shortLabel: 'Logistik',
-    orderNum: 2,
-    icon: ShoppingBag,
-    activeColor: 'text-blue-700 bg-blue-500',
-    trackColor: 'bg-blue-500',
-    badgeBg: 'bg-blue-100 text-blue-900 border-blue-300',
-    ringColor: 'ring-blue-400',
-    desc: 'Bahan Baku & Blank Apparel',
+    id: 'Heat Press',
+    label: 'Heat Press',
+    shortLabel: 'Press',
+    orderNum: 3,
+    icon: Flame,
+    activeColor: 'text-orange-700 bg-orange-500',
+    trackColor: 'bg-orange-500',
+    badgeBg: 'bg-orange-100 text-orange-900 border-orange-300',
+    ringColor: 'ring-orange-400',
+    desc: 'Proses Heat Press & Curing',
   },
   {
-    id: 'Produksi',
-    label: 'Produksi',
-    shortLabel: 'Produksi',
-    orderNum: 3,
-    icon: Cpu,
+    id: 'Packing',
+    label: 'Packing',
+    shortLabel: 'Pack',
+    orderNum: 4,
+    icon: Package,
     activeColor: 'text-emerald-700 bg-emerald-500',
     trackColor: 'bg-emerald-500',
     badgeBg: 'bg-emerald-100 text-emerald-900 border-emerald-300',
     ringColor: 'ring-emerald-400',
-    desc: 'Jahit, Press, QC & Packing',
+    desc: 'QC & Pengemasan Rapi',
   },
   {
-    id: 'Pengantaran',
-    label: 'Pengantaran',
-    shortLabel: 'Antar',
-    orderNum: 4,
+    id: 'Shipping',
+    label: 'Shipping',
+    shortLabel: 'Ship',
+    orderNum: 5,
     icon: Truck,
     activeColor: 'text-purple-700 bg-purple-500',
     trackColor: 'bg-purple-500',
@@ -81,19 +93,26 @@ const STAGES: StageStep[] = [
   },
 ];
 
-// Helper to resolve stage index cleanly (mapping legacy 'Belanja' to 'Logistik' index 1)
+// Helper to resolve stage index cleanly
 function getStageIndex(stage: ProductionStage | string): number {
-  if (stage === 'Belanja' || stage === 'Logistik') return 1;
-  if (stage === 'Produksi') return 2;
-  if (stage === 'Pengantaran') return 3;
-  return 0; // Printing
+  const norm = normalizeStageName(stage);
+  if (norm === 'Waiting') return 0;
+  if (norm === 'Print') return 1;
+  if (norm === 'Heat Press') return 2;
+  if (norm === 'Packing') return 3;
+  if (norm === 'Shipping') return 4;
+  return 0;
 }
 
 function normalizeStageName(stage: string): ProductionStage {
-  if (stage === 'Belanja' || stage === 'Logistik') return 'Logistik';
-  if (stage === 'Produksi') return 'Produksi';
-  if (stage === 'Pengantaran') return 'Pengantaran';
-  return 'Printing';
+  const s = (stage || '').toLowerCase().trim();
+  if (s === 'waiting' || s === 'menunggu') return 'Waiting';
+  if (s === 'print' || s === 'printing') return 'Print';
+  if (s === 'heat press' || s === 'heatpress' || s === 'press' || s === 'curing') return 'Heat Press';
+  if (s === 'packing' || s === 'produksi' || s === 'qc') return 'Packing';
+  if (s === 'shipping' || s === 'pengantaran' || s === 'antar' || s === 'kirim') return 'Shipping';
+  if (s === 'logistik' || s === 'belanja') return 'Waiting';
+  return 'Waiting';
 }
 
 function formatShortTime(isoStr?: string): string | null {

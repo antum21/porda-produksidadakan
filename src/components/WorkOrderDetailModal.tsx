@@ -38,7 +38,7 @@ interface WorkOrderDetailModalProps {
   onClose: () => void;
 }
 
-const STAGES: ProductionStage[] = ['Printing', 'Logistik', 'Produksi', 'Pengantaran'];
+const STAGES: ProductionStage[] = ['Waiting', 'Print', 'Heat Press', 'Packing', 'Shipping'];
 
 export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
   workOrder,
@@ -139,10 +139,14 @@ export const WorkOrderDetailModal: React.FC<WorkOrderDetailModalProps> = ({
   if (!workOrder) return null;
 
   const normalizeStageName = (st: string): ProductionStage => {
-    if (st === 'Belanja' || st === 'Logistik') return 'Logistik';
-    if (st === 'Produksi') return 'Produksi';
-    if (st === 'Pengantaran') return 'Pengantaran';
-    return 'Printing';
+    const s = (st || '').toLowerCase().trim();
+    if (s === 'waiting' || s === 'menunggu') return 'Waiting';
+    if (s === 'print' || s === 'printing') return 'Print';
+    if (s === 'heat press' || s === 'heatpress' || s === 'press' || s === 'curing') return 'Heat Press';
+    if (s === 'packing' || s === 'produksi' || s === 'qc') return 'Packing';
+    if (s === 'shipping' || s === 'pengantaran' || s === 'antar' || s === 'kirim') return 'Shipping';
+    if (s === 'logistik' || s === 'belanja') return 'Waiting';
+    return 'Waiting';
   };
 
   const currNormStage = normalizeStageName(workOrder.tahap_sekarang);

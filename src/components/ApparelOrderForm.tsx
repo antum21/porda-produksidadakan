@@ -5,6 +5,12 @@ import { extractImageFromClipboardEvent, readImageFromSystemClipboard } from '..
 import { compressImageFile } from '../utils/imageCompressor';
 import { useToast } from '../context/ToastContext';
 import {
+  getSizeExtraCharge,
+  calculateEffectiveSablonPrice,
+  calculateApparelItemSubtotal,
+  calculateUnitPriceForSize,
+} from '../utils/pricing';
+import {
   Upload,
   Image as ImageIcon,
   Trash2,
@@ -784,23 +790,9 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
               {/* SISI KANAN: List Ukuran & Item Pesanan */}
               <div className="lg:col-span-8 space-y-4">
                 {design.items.map((item, iIdx) => {
-                  // Total baju pada item ini
-                  const totalPcsItem =
-                    (item.sizes.S || 0) +
-                    (item.sizes.M || 0) +
-                    (item.sizes.L || 0) +
-                    (item.sizes.XL || 0) +
-                    (item.sizes['2XL'] || 0) +
-                    (item.sizes['3XL'] || 0) +
-                    (item.sizes['4XL'] || 0);
-
-                  // Total harga sablon terpilih
-                  const rawSablonPrice = item.sablon_list.reduce((acc, s) => acc + (s.harga || 0), 0);
-                  const effectiveSablonPrice = Math.max(0, rawSablonPrice - (item.diskon_sablon || 0));
-
-                  // Subtotal = (harga satuan + harga sablon) x total baju
-                  const pricePerPcs = (item.harga_satuan || 0) + effectiveSablonPrice;
-                  const itemSubtotal = pricePerPcs * totalPcsItem;
+                  // Total baju & subtotal pada item ini (memperhitungkan penambahan ukuran di atas XL dan diskon minus)
+                  const { totalPcs: totalPcsItem, subtotal: itemSubtotal, effectiveSablonPrice } = calculateApparelItemSubtotal(item);
+                  const basePricePerPcs = (item.harga_satuan || 0) + effectiveSablonPrice;
 
                   return (
                     <div
@@ -873,30 +865,45 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
 
                       {/* Baris 2: Grid List Ukuran: S, M, L, XL, 2XL, 3XL, 4XL */}
                       <div>
-                        <span className="block text-[11px] font-semibold text-slate-600 mb-1.5">
-                          Rincian Jumlah Ukuran (Pcs):
-                        </span>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="block text-[11px] font-semibold text-slate-600">
+                            Rincian Jumlah Ukuran (Pcs):
+                          </span>
+                          <span className="text-[10px] font-semibold text-[#E63946] bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                            Ukuran &gt; XL bertambah +5.000 / tingkat
+                          </span>
+                        </div>
                         <div className="grid grid-cols-7 gap-1.5 sm:gap-2 text-center">
-                          {(['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'] as const).map((sz, szIdx) => (
-                            <div key={`sz-${design.id || dIdx}-${item.id || iIdx}-${sz}-${szIdx}`} className="flex flex-col items-center">
-                              <span className="text-[11px] font-bold text-slate-700 mb-1">{sz}</span>
-                              <input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                value={item.sizes[sz] === 0 ? '' : item.sizes[sz]}
-                                onChange={(e) =>
-                                  handleUpdateSize(
-                                    design.id,
-                                    item.id,
-                                    sz,
-                                    e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0
-                                  )
-                                }
-                                className="w-full text-center bg-white border border-slate-200 rounded-lg py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#E63946] shadow-2xs"
-                              />
-                            </div>
-                          ))}
+                          {(['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'] as const).map((sz, szIdx) => {
+                            const extraCharge = getSizeExtraCharge(sz);
+                            return (
+                              <div key={`sz-${design.id || dIdx}-${item.id || iIdx}-${sz}-${szIdx}`} className="flex flex-col items-center">
+                                <span className="text-[11px] font-bold text-slate-700 mb-0.5">{sz}</span>
+                                {extraCharge > 0 ? (
+                                  <span className="text-[9px] font-bold text-red-600 bg-red-50 px-1 rounded-sm mb-1">
+                                    +{extraCharge / 1000}k
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 mb-1">std</span>
+                                )}
+                                <input
+                                  type="number"
+                                  min="0"
+                                  placeholder="0"
+                                  value={item.sizes[sz] === 0 ? '' : item.sizes[sz]}
+                                  onChange={(e) =>
+                                    handleUpdateSize(
+                                      design.id,
+                                      item.id,
+                                      sz,
+                                      e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0
+                                    )
+                                  }
+                                  className="w-full text-center bg-white border border-slate-200 rounded-lg py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-[#E63946] shadow-2xs"
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
 
@@ -962,17 +969,21 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                             )}
                           </div>
 
-                          {/* Diskon Sablon */}
+                          {/* Diskon Sablon (Boleh minus) */}
                           <div className="sm:col-span-5">
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center gap-1">
-                              <Tag className="w-3 h-3 text-slate-400" />
-                              Diskon Sablon:
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
+                              <span className="flex items-center gap-1">
+                                <Tag className="w-3 h-3 text-slate-400" />
+                                Diskon Sablon:
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-normal">
+                                (Boleh minus: misal -5000)
+                              </span>
                             </label>
                             <div className="relative">
                               <span className="absolute left-2.5 top-2 text-xs font-bold text-slate-400">Rp</span>
                               <input
                                 type="number"
-                                min="0"
                                 step="any"
                                 placeholder="0"
                                 value={item.diskon_sablon === 0 ? '' : item.diskon_sablon}
@@ -984,7 +995,11 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                                     e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0
                                   )
                                 }
-                                className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#E63946]"
+                                className={`w-full bg-white border rounded-xl pl-8 pr-2.5 py-1.5 text-xs font-bold focus:outline-none focus:border-[#E63946] ${
+                                  (item.diskon_sablon || 0) < 0
+                                    ? 'border-amber-400 text-amber-800 bg-amber-50/40'
+                                    : 'border-slate-200 text-slate-800'
+                                }`}
                               />
                             </div>
                           </div>
@@ -1005,7 +1020,7 @@ export const ApparelOrderForm: React.FC<ApparelOrderFormProps> = ({
                           <span className="text-slate-300">|</span>
                           <span>
                             Total/pcs:{' '}
-                            <strong className="text-slate-900">{formatRupiah(pricePerPcs)}</strong>
+                            <strong className="text-slate-900">{formatRupiah(basePricePerPcs)}</strong>
                           </span>
                         </div>
                         <div>

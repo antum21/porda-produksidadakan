@@ -10,6 +10,7 @@ import {
   generateThermalReceiptText,
   ThermalReceiptData,
 } from '../utils/printReceipt';
+import { calculateUnitPriceForSize } from '../utils/pricing';
 
 export const ThermalReceiptPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -49,16 +50,13 @@ export const ThermalReceiptPage: React.FC = () => {
                   (sum, s) => sum + (s.harga || 0),
                   0
                 );
-                const unitPrice = Math.max(
-                  0,
-                  (item.harga_satuan || 0) + sablonTotal - (item.diskon_sablon || 0)
-                );
                 const sablonNames = (item.sablon_list || []).map((s) => s.nama).join(', ');
                 const sablonSuffix = sablonNames ? ` (+Sablon ${sablonNames})` : '';
 
                 Object.entries(item.sizes || {}).forEach(([sizeKey, sizeVal]) => {
                   const qty = Number(sizeVal) || 0;
                   if (qty > 0) {
+                    const unitPrice = calculateUnitPriceForSize(item, sizeKey);
                     generatedItems.push({
                       id: `d-${dIdx}-i-${iIdx}-s-${sizeKey}`,
                       deskripsi: `${item.jenis_pesanan || 'Apparel'} - Ukuran ${sizeKey}${sablonSuffix}`,

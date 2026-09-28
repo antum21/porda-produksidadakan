@@ -31,6 +31,9 @@ import {
   EyeOff,
   Users,
   Sparkles,
+  Clock,
+  Flame,
+  Package,
 } from 'lucide-react';
 
 const ROLE_INFO: Record<
@@ -85,6 +88,41 @@ const ROLE_INFO: Record<
     color: 'bg-teal-50 text-teal-800 border-teal-200',
     badgeColor: 'bg-teal-50 text-teal-700 border-teal-100',
     desc: 'Verifikasi DP minimal 70% & pelunasan faktur',
+  },
+  Waiting: {
+    label: 'Tahap 1: Waiting',
+    icon: Clock,
+    color: 'bg-slate-50 text-slate-800 border-slate-200',
+    badgeColor: 'bg-slate-50 text-slate-700 border-slate-100',
+    desc: 'Menunggu Antrean & Bahan Baku',
+  },
+  Print: {
+    label: 'Tahap 2: Print',
+    icon: Printer,
+    color: 'bg-amber-50 text-amber-800 border-amber-200',
+    badgeColor: 'bg-amber-50 text-amber-700 border-amber-100',
+    desc: 'Cetak DTF / Sablon Manual / Digital',
+  },
+  'Heat Press': {
+    label: 'Tahap 3: Heat Press',
+    icon: Flame,
+    color: 'bg-orange-50 text-orange-800 border-orange-200',
+    badgeColor: 'bg-orange-50 text-orange-700 border-orange-100',
+    desc: 'Press Sablon & Curing Finishing',
+  },
+  Packing: {
+    label: 'Tahap 4: Packing',
+    icon: Package,
+    color: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    desc: 'Quality Control & Kemas Rapi',
+  },
+  Shipping: {
+    label: 'Tahap 5: Shipping',
+    icon: Truck,
+    color: 'bg-purple-50 text-purple-800 border-purple-200',
+    badgeColor: 'bg-purple-50 text-purple-700 border-purple-100',
+    desc: 'Kurir, Ekspedisi & Pengantaran',
   },
 };
 
@@ -566,7 +604,7 @@ export const AdminUsersPage: React.FC = () => {
                           </button>
 
                           {/* Delete User Button */}
-                          {u.username.toLowerCase() !== 'admin123' && u.username.toLowerCase() !== 'admin' && (
+                          {(u.username || '').toLowerCase() !== 'admin123' && (u.username || '').toLowerCase() !== 'admin' && (
                             <button
                               onClick={() => {
                                 setSelectedUser(u);

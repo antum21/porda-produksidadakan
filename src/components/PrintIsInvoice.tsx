@@ -20,6 +20,7 @@ import {
 import { ThermalReceipt80mm } from './ThermalReceipt80mm';
 import { openThermalReceiptInNewTab } from '../utils/printReceipt';
 import { openPdfInvoiceInNewTab } from '../utils/printPdfInvoice';
+import { calculateUnitPriceForSize, calculateEffectiveSablonPrice } from '../utils/pricing';
 
 interface PrintIsInvoiceProps {
   order?: OrderItem | null;
@@ -166,10 +167,6 @@ export const PrintIsInvoice: React.FC<PrintIsInvoiceProps> = ({
             }
           });
 
-          const effectiveUnitPrice = Math.max(
-            0,
-            (it.harga_satuan || 0) + sablonTotal - (it.diskon_sablon || 0)
-          );
           const sablonNames = (it.sablon_list || []).map((s) => s.nama).join(', ');
           const modelBahan = it.jenis_pesanan?.trim() || order.bahan_apparel || 'Kaos Apparel';
 
@@ -177,6 +174,7 @@ export const PrintIsInvoice: React.FC<PrintIsInvoiceProps> = ({
             Object.entries(it.sizes).forEach(([sizeKey, sizeVal]) => {
               const qty = Number(sizeVal) || 0;
               if (qty > 0) {
+                const effectiveUnitPrice = calculateUnitPriceForSize(it, sizeKey);
                 const rowTotal = effectiveUnitPrice * qty;
                 totalQty += qty;
                 subtotal += rowTotal;

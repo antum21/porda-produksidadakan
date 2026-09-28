@@ -7,14 +7,14 @@ import { WorkOrderDetailModal } from '../components/WorkOrderDetailModal';
 import { ProductionStatusSlider } from '../components/ProductionStatusSlider';
 import { playFeedbackSound } from '../utils/audio';
 import {
+  Clock,
   Printer,
-  ShoppingBag,
-  Cpu,
+  Flame,
+  Package,
   Truck,
   ArrowRight,
   Building,
   CheckCircle2,
-  Clock,
   Layers,
   Calendar,
   Filter,
@@ -43,9 +43,55 @@ const STAGES_CONFIG: Record<
     roleMatch: UserRole[];
   }
 > = {
+  Waiting: {
+    id: 'Waiting',
+    title: '1. Waiting',
+    subtitle: 'Menunggu Antrean & Bahan Baku',
+    icon: Clock,
+    color: 'border-slate-400/80 bg-slate-500/10 text-slate-800',
+    badgeBg: 'bg-slate-100 text-slate-800 border-slate-300',
+    roleMatch: ['Admin', 'super_admin'],
+  },
+  Print: {
+    id: 'Print',
+    title: '2. Print',
+    subtitle: 'Cetak DTF / Sablon Manual / Digital',
+    icon: Printer,
+    color: 'border-amber-400/80 bg-amber-500/10 text-amber-900',
+    badgeBg: 'bg-amber-100 text-amber-900 border-amber-300',
+    roleMatch: ['Admin', 'Printing', 'super_admin'],
+  },
+  'Heat Press': {
+    id: 'Heat Press',
+    title: '3. Heat Press',
+    subtitle: 'Press Sablon / Curing & Finishing Kain',
+    icon: Flame,
+    color: 'border-orange-400/80 bg-orange-500/10 text-orange-900',
+    badgeBg: 'bg-orange-100 text-orange-900 border-orange-300',
+    roleMatch: ['Admin', 'Produksi', 'super_admin'],
+  },
+  Packing: {
+    id: 'Packing',
+    title: '4. Packing',
+    subtitle: 'Quality Control, Lipat & Kemas Rapi',
+    icon: Package,
+    color: 'border-emerald-400/80 bg-emerald-500/10 text-emerald-900',
+    badgeBg: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+    roleMatch: ['Admin', 'Produksi', 'super_admin'],
+  },
+  Shipping: {
+    id: 'Shipping',
+    title: '5. Shipping',
+    subtitle: 'Kurir, Ekspedisi & Pickup Pelanggan',
+    icon: Truck,
+    color: 'border-purple-400/80 bg-purple-500/10 text-purple-900',
+    badgeBg: 'bg-purple-100 text-purple-900 border-purple-300',
+    roleMatch: ['Admin', 'Pengantaran', 'super_admin'],
+  },
+  // Legacy compatibility keys
   Printing: {
-    id: 'Printing',
-    title: '1. Printing',
+    id: 'Print',
+    title: '2. Print',
     subtitle: 'Cetak DTF / Sablon Manual / Digital',
     icon: Printer,
     color: 'border-amber-400/80 bg-amber-500/10 text-amber-900',
@@ -53,36 +99,36 @@ const STAGES_CONFIG: Record<
     roleMatch: ['Admin', 'Printing'],
   },
   Logistik: {
-    id: 'Logistik',
-    title: '2. Logistik',
-    subtitle: 'Pengadaan Blank Apparel Supplier',
-    icon: ShoppingBag,
-    color: 'border-blue-400/80 bg-blue-500/10 text-blue-900',
-    badgeBg: 'bg-blue-100 text-blue-900 border-blue-300',
+    id: 'Waiting',
+    title: '1. Waiting',
+    subtitle: 'Pengadaan Blank Apparel',
+    icon: Clock,
+    color: 'border-slate-400/80 bg-slate-500/10 text-slate-800',
+    badgeBg: 'bg-slate-100 text-slate-800 border-slate-300',
     roleMatch: ['Admin', 'Logistik'],
   },
   Belanja: {
-    id: 'Belanja',
-    title: '2. Logistik',
-    subtitle: 'Pengadaan Blank Apparel Supplier',
-    icon: ShoppingBag,
-    color: 'border-blue-400/80 bg-blue-500/10 text-blue-900',
-    badgeBg: 'bg-blue-100 text-blue-900 border-blue-300',
+    id: 'Waiting',
+    title: '1. Waiting',
+    subtitle: 'Pengadaan Blank Apparel',
+    icon: Clock,
+    color: 'border-slate-400/80 bg-slate-500/10 text-slate-800',
+    badgeBg: 'bg-slate-100 text-slate-800 border-slate-300',
     roleMatch: ['Admin', 'Logistik'],
   },
   Produksi: {
-    id: 'Produksi',
-    title: '3. Produksi',
-    subtitle: 'Finishing, Press, Jahit, QC & Pack',
-    icon: Cpu,
-    color: 'border-emerald-400/80 bg-emerald-500/10 text-emerald-900',
-    badgeBg: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+    id: 'Heat Press',
+    title: '3. Heat Press',
+    subtitle: 'Press Sablon / Curing & Finishing Kain',
+    icon: Flame,
+    color: 'border-orange-400/80 bg-orange-500/10 text-orange-900',
+    badgeBg: 'bg-orange-100 text-orange-900 border-orange-300',
     roleMatch: ['Admin', 'Produksi'],
   },
   Pengantaran: {
-    id: 'Pengantaran',
-    title: '4. Pengantaran',
-    subtitle: 'Kurir, Delivery & Pickup Klien',
+    id: 'Shipping',
+    title: '5. Shipping',
+    subtitle: 'Kurir, Ekspedisi & Pickup Pelanggan',
     icon: Truck,
     color: 'border-purple-400/80 bg-purple-500/10 text-purple-900',
     badgeBg: 'bg-purple-100 text-purple-900 border-purple-300',
@@ -90,15 +136,19 @@ const STAGES_CONFIG: Record<
   },
 };
 
-// Urutan baku 4 tahap produksi: Printing -> Logistik -> Produksi -> Pengantaran
-const STAGE_KEYS: ProductionStage[] = ['Printing', 'Logistik', 'Produksi', 'Pengantaran'];
+// Urutan baku 5 tahap produksi: Waiting -> Print -> Heat Press -> Packing -> Shipping
+const STAGE_KEYS: ProductionStage[] = ['Waiting', 'Print', 'Heat Press', 'Packing', 'Shipping'];
 
-// Normalizer untuk memetakan legacy 'Belanja' ke 'Logistik'
+// Normalizer untuk memetakan nama tahap
 const normalizeStage = (st: string): ProductionStage => {
-  if (st === 'Belanja' || st === 'Logistik') return 'Logistik';
-  if (st === 'Produksi') return 'Produksi';
-  if (st === 'Pengantaran') return 'Pengantaran';
-  return 'Printing';
+  const s = (st || '').toLowerCase().trim();
+  if (s === 'waiting' || s === 'menunggu') return 'Waiting';
+  if (s === 'print' || s === 'printing') return 'Print';
+  if (s === 'heat press' || s === 'heatpress' || s === 'press' || s === 'curing') return 'Heat Press';
+  if (s === 'packing' || s === 'produksi' || s === 'qc') return 'Packing';
+  if (s === 'shipping' || s === 'pengantaran' || s === 'antar' || s === 'kirim') return 'Shipping';
+  if (s === 'logistik' || s === 'belanja') return 'Waiting';
+  return 'Waiting';
 };
 
 function formatDateTime(isoStr?: string): string {
@@ -147,16 +197,17 @@ export const ProductionPage: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // Stage statistics
+  // Stage statistics (Waiting -> Print -> Heat Press -> Packing -> Shipping)
   const stageStats = useMemo(() => {
     const active = workOrders.filter((w) => !w.completed_at);
     const archived = workOrders.filter((w) => !!w.completed_at);
     return {
       totalAktif: active.length,
-      printing: active.filter((w) => normalizeStage(w.tahap_sekarang) === 'Printing').length,
-      logistik: active.filter((w) => normalizeStage(w.tahap_sekarang) === 'Logistik').length,
-      produksi: active.filter((w) => normalizeStage(w.tahap_sekarang) === 'Produksi').length,
-      pengantaran: active.filter((w) => normalizeStage(w.tahap_sekarang) === 'Pengantaran').length,
+      waiting: active.filter((w) => normalizeStage(w.tahap_sekarang) === 'Waiting').length,
+      print: active.filter((w) => normalizeStage(w.tahap_sekarang) === 'Print').length,
+      heatPress: active.filter((w) => normalizeStage(w.tahap_sekarang) === 'Heat Press').length,
+      packing: active.filter((w) => normalizeStage(w.tahap_sekarang) === 'Packing').length,
+      shipping: active.filter((w) => normalizeStage(w.tahap_sekarang) === 'Shipping').length,
       selesai: archived.length,
     };
   }, [workOrders]);
@@ -251,7 +302,7 @@ export const ProductionPage: React.FC = () => {
       // Mark as Final Complete -> enters archive!
       setActionLoadingId(wo.id);
       try {
-        await updateWorkOrderStage(wo.id, 'Pengantaran', userProfile?.nama || role, {
+        await updateWorkOrderStage(wo.id, 'Shipping', userProfile?.nama || role, {
           isFinalComplete: true,
           catatan_tahap: 'Pesanan telah selesai & masuk arsip selesai.',
         });
@@ -277,7 +328,7 @@ export const ProductionPage: React.FC = () => {
     if (!window.confirm(`Buka kembali pesanan ${wo.id} (${wo.nama_klien}) ke Antrian Produksi Aktif?`)) return;
     setActionLoadingId(wo.id);
     try {
-      await updateWorkOrderStage(wo.id, 'Pengantaran', userProfile?.nama || role, {
+      await updateWorkOrderStage(wo.id, 'Shipping', userProfile?.nama || role, {
         reopenFromArchive: true,
         catatan_tahap: 'Pesanan dibuka kembali dari Arsip ke Antrian Aktif.',
       });
@@ -310,7 +361,7 @@ export const ProductionPage: React.FC = () => {
       <Header
         badge="ERP Production"
         title="Manajemen Produksi & SPK"
-        subtitle="Alur 4 tahap produksi: Printing, Logistik, Produksi, dan Pengantaran"
+        subtitle="Alur 5 tahap produksi: Waiting, Print, Heat Press, Packing, dan Shipping"
       />
 
       <div className="px-4 sm:px-6 lg:px-8 space-y-5">
@@ -373,12 +424,12 @@ export const ProductionPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Stats Summary Cards (Hanya di Antrian Aktif) */}
+        {/* Quick Stats Summary Cards (Hanya di Antrian Aktif) - 5 Tahap: Waiting -> Print -> Heat Press -> Packing -> Shipping */}
         {mainTab === 'antrian' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
             <div
               onClick={() => setStageFilter('Semua')}
-              className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+              className={`p-3 rounded-2xl border transition-all cursor-pointer ${
                 stageFilter === 'Semua'
                   ? 'bg-slate-900 text-white border-slate-900 shadow-md'
                   : 'bg-white text-slate-800 border-slate-200/90 hover:border-slate-300'
@@ -389,71 +440,87 @@ export const ProductionPage: React.FC = () => {
                 <Layers className="w-4 h-4 text-red-500" />
               </div>
               <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.totalAktif}</div>
-              <div className="text-[10px] text-slate-400">Dalam Antrian Produksi</div>
+              <div className="text-[10px] text-slate-400">Semua Antrean</div>
             </div>
 
             <div
-              onClick={() => setStageFilter('Printing')}
-              className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                stageFilter === 'Printing'
+              onClick={() => setStageFilter('Waiting')}
+              className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                stageFilter === 'Waiting'
+                  ? 'bg-slate-700 text-white border-slate-800 shadow-md'
+                  : 'bg-white text-slate-800 border-slate-300/80 hover:border-slate-400'
+              }`}
+            >
+              <div className="flex items-center justify-between text-xs font-bold mb-1">
+                <span className={stageFilter === 'Waiting' ? 'text-white' : 'text-slate-800'}>1. Waiting</span>
+                <Clock className={`w-4 h-4 ${stageFilter === 'Waiting' ? 'text-white' : 'text-slate-600'}`} />
+              </div>
+              <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.waiting}</div>
+              <div className={`text-[10px] ${stageFilter === 'Waiting' ? 'text-slate-200' : 'text-slate-400'}`}>Antrean & Bahan</div>
+            </div>
+
+            <div
+              onClick={() => setStageFilter('Print')}
+              className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                stageFilter === 'Print'
                   ? 'bg-amber-500 text-white border-amber-600 shadow-md'
                   : 'bg-white text-slate-800 border-amber-200/80 hover:border-amber-300'
               }`}
             >
               <div className="flex items-center justify-between text-xs font-bold mb-1">
-                <span className={stageFilter === 'Printing' ? 'text-white' : 'text-amber-800'}>1. Printing</span>
-                <Printer className={`w-4 h-4 ${stageFilter === 'Printing' ? 'text-white' : 'text-amber-600'}`} />
+                <span className={stageFilter === 'Print' ? 'text-white' : 'text-amber-800'}>2. Print</span>
+                <Printer className={`w-4 h-4 ${stageFilter === 'Print' ? 'text-white' : 'text-amber-600'}`} />
               </div>
-              <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.printing}</div>
-              <div className={`text-[10px] ${stageFilter === 'Printing' ? 'text-amber-100' : 'text-slate-400'}`}>Cetak Sablon/DTF</div>
+              <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.print}</div>
+              <div className={`text-[10px] ${stageFilter === 'Print' ? 'text-amber-100' : 'text-slate-400'}`}>Cetak Sablon/DTF</div>
             </div>
 
             <div
-              onClick={() => setStageFilter('Logistik')}
-              className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                stageFilter === 'Logistik'
-                  ? 'bg-blue-600 text-white border-blue-700 shadow-md'
-                  : 'bg-white text-slate-800 border-blue-200/80 hover:border-blue-300'
+              onClick={() => setStageFilter('Heat Press')}
+              className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                stageFilter === 'Heat Press'
+                  ? 'bg-orange-500 text-white border-orange-600 shadow-md'
+                  : 'bg-white text-slate-800 border-orange-200/80 hover:border-orange-300'
               }`}
             >
               <div className="flex items-center justify-between text-xs font-bold mb-1">
-                <span className={stageFilter === 'Logistik' ? 'text-white' : 'text-blue-800'}>2. Logistik</span>
-                <ShoppingBag className={`w-4 h-4 ${stageFilter === 'Logistik' ? 'text-white' : 'text-blue-600'}`} />
+                <span className={stageFilter === 'Heat Press' ? 'text-white' : 'text-orange-800'}>3. Heat Press</span>
+                <Flame className={`w-4 h-4 ${stageFilter === 'Heat Press' ? 'text-white' : 'text-orange-600'}`} />
               </div>
-              <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.logistik}</div>
-              <div className={`text-[10px] ${stageFilter === 'Logistik' ? 'text-blue-100' : 'text-slate-400'}`}>Pengadaan Bahan</div>
+              <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.heatPress}</div>
+              <div className={`text-[10px] ${stageFilter === 'Heat Press' ? 'text-orange-100' : 'text-slate-400'}`}>Press & Curing</div>
             </div>
 
             <div
-              onClick={() => setStageFilter('Produksi')}
-              className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                stageFilter === 'Produksi'
+              onClick={() => setStageFilter('Packing')}
+              className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                stageFilter === 'Packing'
                   ? 'bg-emerald-600 text-white border-emerald-700 shadow-md'
                   : 'bg-white text-slate-800 border-emerald-200/80 hover:border-emerald-300'
               }`}
             >
               <div className="flex items-center justify-between text-xs font-bold mb-1">
-                <span className={stageFilter === 'Produksi' ? 'text-white' : 'text-emerald-800'}>3. Produksi</span>
-                <Cpu className={`w-4 h-4 ${stageFilter === 'Produksi' ? 'text-white' : 'text-emerald-600'}`} />
+                <span className={stageFilter === 'Packing' ? 'text-white' : 'text-emerald-800'}>4. Packing</span>
+                <Package className={`w-4 h-4 ${stageFilter === 'Packing' ? 'text-white' : 'text-emerald-600'}`} />
               </div>
-              <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.produksi}</div>
-              <div className={`text-[10px] ${stageFilter === 'Produksi' ? 'text-emerald-100' : 'text-slate-400'}`}>Jahit, QC & Pack</div>
+              <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.packing}</div>
+              <div className={`text-[10px] ${stageFilter === 'Packing' ? 'text-emerald-100' : 'text-slate-400'}`}>QC & Kemas Rapi</div>
             </div>
 
             <div
-              onClick={() => setStageFilter('Pengantaran')}
-              className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                stageFilter === 'Pengantaran'
+              onClick={() => setStageFilter('Shipping')}
+              className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                stageFilter === 'Shipping'
                   ? 'bg-purple-600 text-white border-purple-700 shadow-md'
                   : 'bg-white text-slate-800 border-purple-200/80 hover:border-purple-300'
               }`}
             >
               <div className="flex items-center justify-between text-xs font-bold mb-1">
-                <span className={stageFilter === 'Pengantaran' ? 'text-white' : 'text-purple-800'}>4. Pengantaran</span>
-                <Truck className={`w-4 h-4 ${stageFilter === 'Pengantaran' ? 'text-white' : 'text-purple-600'}`} />
+                <span className={stageFilter === 'Shipping' ? 'text-white' : 'text-purple-800'}>5. Shipping</span>
+                <Truck className={`w-4 h-4 ${stageFilter === 'Shipping' ? 'text-white' : 'text-purple-600'}`} />
               </div>
-              <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.pengantaran}</div>
-              <div className={`text-[10px] ${stageFilter === 'Pengantaran' ? 'text-purple-100' : 'text-slate-400'}`}>Delivery & Pickup</div>
+              <div className="text-xl sm:text-2xl font-black font-['Outfit']">{stageStats.shipping}</div>
+              <div className={`text-[10px] ${stageFilter === 'Shipping' ? 'text-purple-100' : 'text-slate-400'}`}>Delivery & Pickup</div>
             </div>
           </div>
         )}
@@ -540,10 +607,11 @@ export const ProductionPage: React.FC = () => {
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs border-t border-slate-100 pt-3">
               {[
                 { id: 'Semua', label: 'Semua Aktif', count: stageStats.totalAktif },
-                { id: 'Printing', label: '1. Printing', count: stageStats.printing },
-                { id: 'Logistik', label: '2. Logistik', count: stageStats.logistik },
-                { id: 'Produksi', label: '3. Produksi', count: stageStats.produksi },
-                { id: 'Pengantaran', label: '4. Pengantaran', count: stageStats.pengantaran },
+                { id: 'Waiting', label: '1. Waiting', count: stageStats.waiting },
+                { id: 'Print', label: '2. Print', count: stageStats.print },
+                { id: 'Heat Press', label: '3. Heat Press', count: stageStats.heatPress },
+                { id: 'Packing', label: '4. Packing', count: stageStats.packing },
+                { id: 'Shipping', label: '5. Shipping', count: stageStats.shipping },
               ].map((tab) => {
                 const isSelected = stageFilter === tab.id;
                 return (
@@ -820,7 +888,7 @@ export const ProductionPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* SISI TENGAH: 1 KOLOM STATUS ORDERAN YANG BISA DIGESER (Urutan: Printing -> Logistik -> Produksi -> Pengantaran) */}
+                  {/* SISI TENGAH: 1 KOLOM STATUS ORDERAN YANG BISA DIGESER (Urutan: Waiting -> Print -> Heat Press -> Packing -> Shipping) */}
                   <div className="w-full xl:w-[410px] shrink-0">
                     <ProductionStatusSlider
                       workOrder={wo}
@@ -849,7 +917,7 @@ export const ProductionPage: React.FC = () => {
                         onClick={(e) => handleQuickAdvance(wo, e)}
                         disabled={isActionLoading}
                         className={`px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 shadow-md transition-all cursor-pointer disabled:opacity-50 ${
-                          currNorm === 'Pengantaran'
+                          currNorm === 'Shipping'
                             ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
                             : 'bg-[#E63946] hover:bg-red-600 shadow-red-500/20'
                         }`}
@@ -859,7 +927,7 @@ export const ProductionPage: React.FC = () => {
                             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             <span>Memproses...</span>
                           </>
-                        ) : currNorm === 'Pengantaran' ? (
+                        ) : currNorm === 'Shipping' ? (
                           <>
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>Selesaikan & Arsipkan ✓</span>
@@ -892,7 +960,7 @@ export const ProductionPage: React.FC = () => {
           /* ======================================================== */
           /* TAMPILAN KANBAN BOARD                                    */
           /* ======================================================== */
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {STAGE_KEYS.map((stageKey) => {
               const cfg = STAGES_CONFIG[stageKey];
               const StageIcon = cfg.icon;
@@ -965,7 +1033,7 @@ export const ProductionPage: React.FC = () => {
                               className="w-full py-1.5 rounded-xl bg-slate-100 hover:bg-[#E63946] hover:text-white text-slate-700 font-bold text-[10px] flex items-center justify-center gap-1 transition-all"
                             >
                               <span>
-                                {stageKey === 'Pengantaran' ? 'Selesaikan ✓' : 'Lanjut Tahap'}
+                                {stageKey === 'Shipping' ? 'Selesaikan ✓' : 'Lanjut Tahap'}
                               </span>
                               <ChevronRight className="w-3 h-3" />
                             </button>

@@ -542,12 +542,12 @@ export async function commitOrderToProduction(
     deadline: order.deadline,
     apparel_designs: order.apparel_designs || undefined,
     mockup_url: order.mockup_url || undefined,
-    tahap_sekarang: 'Printing',
+    tahap_sekarang: 'Waiting',
     nama_vendor: initialVendor || null,
     diupdate_oleh: updatedBy,
     updated_at: now,
     started_at: now,
-    catatan_tahap: 'Pesanan resmi di-commit ke antrean produksi Tahap 1 (Printing).',
+    catatan_tahap: 'Pesanan resmi di-commit ke antrean produksi Tahap 1 (Waiting: Menunggu Bahan & Antrean).',
     checklist: {
       printing_done: false,
       blank_apparel_ready: false,
@@ -559,10 +559,10 @@ export async function commitOrderToProduction(
     },
     riwayat_tahap: [
       {
-        tahap: 'Printing',
+        tahap: 'Waiting',
         waktu: now,
         oleh: updatedBy,
-        catatan: `Order di-commit dari invoice ${order.invoice_no}. Siap diproses cetak.`,
+        catatan: `Order di-commit dari invoice ${order.invoice_no}. Masuk antrean Waiting.`,
         vendor: initialVendor || undefined,
       },
     ],

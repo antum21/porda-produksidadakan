@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { OrderItem, SizeBreakdown, ApparelDesignCard } from '../types';
 import { updateOrder } from '../services/dbService';
 import { useToast } from '../context/ToastContext';
+import { calculateDesignsGrandTotal, getSizeExtraCharge } from '../utils/pricing';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -123,20 +124,8 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     // Update state
     setApparelDesigns(updatedDesigns);
 
-    // Recalculate overall total
-    let newGrandTotal = 0;
-    updatedDesigns.forEach((d) => {
-      d.items.forEach((it) => {
-        const itPcs = sumSizes(it.sizes);
-        const sPrice = (it.sablon_list || []).reduce(
-          (sum, s) => sum + (Number(s?.harga) || 0),
-          0
-        );
-        const uPrice = Math.max(0, (it.harga_satuan || 0) + sPrice - (it.diskon_sablon || 0));
-        newGrandTotal += uPrice * itPcs;
-      });
-    });
-
+    // Recalculate overall total with size tiers (+5000) and allow negative discounts
+    const { totalHarga: newGrandTotal } = calculateDesignsGrandTotal(updatedDesigns);
     if (newGrandTotal > 0) {
       setTotalHarga(newGrandTotal);
     }
@@ -147,11 +136,20 @@ export const EditOrderModal: React.FC<EditOrderModalProps> = ({
     const nextSizes: SizeBreakdown = { ...simpleSizes, [sizeKey]: Math.max(0, val) };
     setSimpleSizes(nextSizes);
 
-    const totalPcs = sumSizes(nextSizes);
-    const unitPrice =
+    const baseUnitPrice =
       order.total_harga && order.jumlah_pcs ? Math.round(order.total_harga / order.jumlah_pcs) : 75000;
-    if (totalPcs > 0) {
-      setTotalHarga(totalPcs * unitPrice);
+    
+    let calculatedTotal = 0;
+    Object.entries(nextSizes).forEach(([sz, count]) => {
+      const q = Number(count) || 0;
+      if (q > 0) {
+        const extra = getSizeExtraCharge(sz);
+        calculatedTotal += (baseUnitPrice + extra) * q;
+      }
+    });
+
+    if (calculatedTotal > 0) {
+      setTotalHarga(calculatedTotal);
     }
   };
 

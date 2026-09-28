@@ -1,6 +1,29 @@
-export type UserRole = 'super_admin' | 'Admin' | 'Keuangan' | 'Printing' | 'Logistik' | 'Produksi' | 'Pengantaran';
+export type UserRole =
+  | 'super_admin'
+  | 'Admin'
+  | 'Keuangan'
+  | 'Printing'
+  | 'Logistik'
+  | 'Produksi'
+  | 'Pengantaran'
+  | 'Waiting'
+  | 'Print'
+  | 'Heat Press'
+  | 'Packing'
+  | 'Shipping';
 
-export type ProductionStage = 'Printing' | 'Logistik' | 'Belanja' | 'Produksi' | 'Pengantaran';
+export type ProductionStage =
+  | 'Waiting'
+  | 'Print'
+  | 'Heat Press'
+  | 'Packing'
+  | 'Shipping'
+  // Legacy compatibility aliases
+  | 'Printing'
+  | 'Logistik'
+  | 'Belanja'
+  | 'Produksi'
+  | 'Pengantaran';
 
 export type OrderStatus = 'Menunggu Pembayaran' | 'Diproses' | 'Selesai';
 

@@ -119,7 +119,7 @@ export const OrdersPage: React.FC = () => {
         playFeedbackSound('advance');
         setCommitMessage({
           id: order.id,
-          success: `Pesanan berhasil di-commit! Work Order ${res.workOrderId} telah masuk ke Tahap 1 (Printing).`,
+          success: `Pesanan berhasil di-commit! Work Order ${res.workOrderId} telah masuk ke Tahap 1 (Waiting).`,
         });
 
         // Trigger confetti for successful production dispatch
@@ -220,13 +220,16 @@ export const OrdersPage: React.FC = () => {
   const filteredOrders = orders.filter((order) => {
     const isSelesai = isOrderSelesai(order);
 
+    const q = (searchQuery || '').toLowerCase().trim();
     const matchesSearch =
-      order.nama_klien.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.invoice_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (order.bahan_apparel && order.bahan_apparel.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (order.jenis_cetak && order.jenis_cetak.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (order.tipe_grafis && order.tipe_grafis.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (order.nama_item_custom && order.nama_item_custom.toLowerCase().includes(searchQuery.toLowerCase()));
+      !q ||
+      (order.nama_klien || '').toLowerCase().includes(q) ||
+      (order.invoice_no || '').toLowerCase().includes(q) ||
+      (order.no_telepon || '').toLowerCase().includes(q) ||
+      (order.bahan_apparel || '').toLowerCase().includes(q) ||
+      (order.jenis_cetak || '').toLowerCase().includes(q) ||
+      (order.tipe_grafis || '').toLowerCase().includes(q) ||
+      (order.nama_item_custom || '').toLowerCase().includes(q);
 
     const matchesStatus =
       statusFilter === 'Semua'

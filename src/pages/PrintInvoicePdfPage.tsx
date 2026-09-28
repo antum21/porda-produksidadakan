@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import { ORDERS_COLLECTION } from '../services/dbService';
 import { OrderItem } from '../types';
 import { getStoredPdfInvoiceData, PdfInvoicePayload } from '../utils/printPdfInvoice';
+import { calculateUnitPriceForSize } from '../utils/pricing';
 
 interface InvoiceDesignGroup {
   id: string;
@@ -140,10 +141,6 @@ export const PrintInvoicePdfPage: React.FC = () => {
             }
           });
 
-          const effectiveUnitPrice = Math.max(
-            0,
-            (it.harga_satuan || 0) + sablonTotal - (it.diskon_sablon || 0)
-          );
           const sablonNames = (it.sablon_list || []).map((s) => s.nama).join(', ');
           const modelBahan = it.jenis_pesanan?.trim() || ord.bahan_apparel || 'Kaos Apparel';
 
@@ -151,6 +148,7 @@ export const PrintInvoicePdfPage: React.FC = () => {
             Object.entries(it.sizes).forEach(([sizeKey, sizeVal]) => {
               const qty = Number(sizeVal) || 0;
               if (qty > 0) {
+                const effectiveUnitPrice = calculateUnitPriceForSize(it, sizeKey);
                 const rowTotal = effectiveUnitPrice * qty;
                 totalQty += qty;
                 subtotal += rowTotal;

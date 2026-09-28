@@ -268,15 +268,15 @@ export const FinancePage: React.FC = () => {
   // Filtered Material Stocks for Inventory Tab
   const filteredStocks = useMemo(() => {
     return stocks.filter((s) => {
-      const query = stockSearchQuery.toLowerCase().trim();
+      const query = (stockSearchQuery || '').toLowerCase().trim();
       const matchesSearch =
         query === '' ||
-        s.nama_bahan.toLowerCase().includes(query) ||
+        (s.nama_bahan || '').toLowerCase().includes(query) ||
         (s.supplier_terakhir && s.supplier_terakhir.toLowerCase().includes(query)) ||
-        s.kategori.toLowerCase().includes(query);
+        (s.kategori || '').toLowerCase().includes(query);
 
       const matchesCat =
-        stockCategoryFilter === 'All' || s.kategori.toLowerCase() === stockCategoryFilter.toLowerCase();
+        stockCategoryFilter === 'All' || (s.kategori || '').toLowerCase() === (stockCategoryFilter || '').toLowerCase();
 
       const isLow = s.stok <= s.stok_minimum;
       const matchesStatus =

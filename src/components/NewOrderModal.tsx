@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { ApparelOrderForm, createDefaultDesignCard } from './ApparelOrderForm';
+import { calculateDesignsGrandTotal } from '../utils/pricing';
 import {
   X,
   Plus,
@@ -182,46 +183,8 @@ export const NewOrderModal: React.FC<NewOrderModalProps> = ({ isOpen, onClose, o
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Compute Total Apparel Pcs across all designs and items
-  const totalApparelPcs = apparelDesigns.reduce((accD, d) => {
-    return (
-      accD +
-      d.items.reduce((accI, item) => {
-        return (
-          accI +
-          (item.sizes.S || 0) +
-          (item.sizes.M || 0) +
-          (item.sizes.L || 0) +
-          (item.sizes.XL || 0) +
-          (item.sizes['2XL'] || 0) +
-          (item.sizes['3XL'] || 0) +
-          (item.sizes['4XL'] || 0)
-        );
-      }, 0)
-    );
-  }, 0);
-
-  // Compute Total Apparel Price across all designs and items
-  // Formula: (Harga Satuan + Harga Sablon) x Total Baju (pcs)
-  const totalApparelHarga = apparelDesigns.reduce((accD, d) => {
-    return (
-      accD +
-      d.items.reduce((accI, item) => {
-        const itemPcs =
-          (item.sizes.S || 0) +
-          (item.sizes.M || 0) +
-          (item.sizes.L || 0) +
-          (item.sizes.XL || 0) +
-          (item.sizes['2XL'] || 0) +
-          (item.sizes['3XL'] || 0) +
-          (item.sizes['4XL'] || 0);
-        const rawSablonPrice = item.sablon_list.reduce((accS, s) => accS + (s.harga || 0), 0);
-        const effectiveSablonPrice = Math.max(0, rawSablonPrice - (item.diskon_sablon || 0));
-        const pricePerPcs = (item.harga_satuan || 0) + effectiveSablonPrice;
-        return accI + pricePerPcs * itemPcs;
-      }, 0)
-    );
-  }, 0);
+  // Compute Total Apparel Price & Pcs across all designs and items using tiered sizes (+5000) and allow negative discount
+  const { totalPcs: totalApparelPcs, totalHarga: totalApparelHarga } = calculateDesignsGrandTotal(apparelDesigns);
 
   // Synchronize totalHarga and DP when apparelDesigns change
   useEffect(() => {
